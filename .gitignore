@@ -15,11 +15,10 @@ env/
 *.swp
 *.swo
 
-# Data files (raw and staging data not tracked in Git)
-data/raw/*
-!data/raw/.gitkeep
-data/staging/*
-!data/staging/.gitkeep
+# Data files (all raw, staging, dimensions, and facts not tracked in Git)
+data/*
+!data/**/
+data/**/[!.]*
 
 # Credentials and secrets
 *credentials*.json
@@ -50,7 +49,7 @@ Desktop.ini
 *.pbix
 
 # -- Phase 1: PySpark -------------------------------------------------------
-# BigQuery connector JAR (large binary — download via scripts/download_spark_jars.py)
+# BigQuery connector JAR (large binary â€” download via scripts/download_spark_jars.py)
 conf/spark/jars/*.jar
 
 # Spark event logs and checkpoint directories
@@ -64,7 +63,5 @@ checkpoints/
 credentials/
 
 
-data/dimensions/*
-!data/dimensions/.gitkeep
-data/facts/*
-!data/facts/.gitkeep
+# Data files
+data/

@@ -1,0 +1,98 @@
+services:
+  # ----------------------------------------------------
+  # 1. ZOOKEEPER & KAFKA (Streaming Ingestion)
+  # ----------------------------------------------------
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.4.0
+    container_name: zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+
+  kafka:
+    image: confluentinc/cp-kafka:7.4.0
+    container_name: kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "29092:29092"
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,EXTERNAL://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+
+  # ----------------------------------------------------
+  # 2. LOCALSTACK (S3 Object Storage for Data Lake)
+  # ----------------------------------------------------
+  s3:
+    image: localstack/localstack:3.5.0
+    container_name: s3
+    environment:
+      - SERVICES=s3
+    ports:
+      - "4566:4566"
+    volumes:
+      - ./docker/s3-init:/etc/localstack/init/ready.d
+
+  # ----------------------------------------------------
+  # 3. NESSIE (Iceberg Catalog)
+  # ----------------------------------------------------
+  nessie:
+    image: projectnessie/nessie:latest
+    container_name: nessie
+    ports:
+      - "19120:19120"
+
+  # ----------------------------------------------------
+  # 4. TRINO (Distributed SQL Engine)
+  # ----------------------------------------------------
+  trino:
+    image: trinodb/trino:latest
+    container_name: trino
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./docker/trino/iceberg.properties:/etc/trino/catalog/iceberg.properties
+    depends_on:
+      - s3
+      - nessie
+
+  # ----------------------------------------------------
+  # 5. SPARK MASTER (Stream Processing)
+  # ----------------------------------------------------
+  spark-master:
+    image: apache/spark:3.5.9-scala2.12-java11-python3-r-ubuntu
+    container_name: spark-master
+    environment:
+      - SPARK_MASTER_HOST=spark-master
+      - AWS_REGION=us-east-1
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+    ports:
+      - "8081:8080"
+      - "7077:7077"
+    volumes:
+      - ./pyspark_jobs:/opt/spark/work-dir
+    command: /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master
+
+  # ----------------------------------------------------
+  # 6. SPARK WORKER (Horizontal Scaling)
+  # ----------------------------------------------------
+  spark-worker-1:
+    image: apache/spark:3.5.9-scala2.12-java11-python3-r-ubuntu
+    container_name: spark-worker-1
+    depends_on:
+      - spark-master
+    environment:
+      - AWS_REGION=us-east-1
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+    volumes:
+      - ./pyspark_jobs:/opt/spark/work-dir
+    command: /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077
