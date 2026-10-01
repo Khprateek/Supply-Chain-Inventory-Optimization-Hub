@@ -40,11 +40,10 @@ spark = SparkSession.builder \
     .getOrCreate()
 
 spark.sparkContext.setLogLevel("WARN")
-
 print("✅ Spark Session Created. Iceberg Nessie Catalog Initialized.")
 
-# Define Schema
-schema = StructType([
+# ── Schemas ───────────────────────────────────────────────────────────────────
+inventory_schema = StructType([
     StructField("event_id", StringType(), True),
     StructField("timestamp", DoubleType(), True),
     StructField("product_id", StringType(), True),
@@ -53,12 +52,23 @@ schema = StructType([
     StructField("event_type", StringType(), True)
 ])
 
-# Create Namespace and Table
-print("📦 Initializing Iceberg Schema...")
+sales_schema = StructType([
+    StructField("event_id", StringType(), True),
+    StructField("timestamp", DoubleType(), True),
+    StructField("product_id", StringType(), True),
+    StructField("customer_id", StringType(), True),
+    StructField("revenue", DoubleType(), True),
+    StructField("units_sold", LongType(), True)
+])
+
+
+# ── Initialization ────────────────────────────────────────────────────────────
+print("📦 Initializing Iceberg Namespaces and Tables...")
 spark.sql("CREATE NAMESPACE IF NOT EXISTS nessie.inventory")
-spark.sql("DROP TABLE IF EXISTS nessie.inventory.streaming_events")
+spark.sql("CREATE NAMESPACE IF NOT EXISTS nessie.sales")
+
 spark.sql("""
-CREATE TABLE nessie.inventory.streaming_events (
+CREATE TABLE IF NOT EXISTS nessie.inventory.streaming_events (
     event_id STRING,
     timestamp DOUBLE,
     product_id STRING,
@@ -69,55 +79,52 @@ CREATE TABLE nessie.inventory.streaming_events (
 ) USING iceberg
 """)
 
-# Read from Kafka
-print("🎧 Listening to Kafka Topic: inventory_events...")
-df = spark.readStream \
-    .format("kafka") \
-    .option("kafka.bootstrap.servers", "kafka:9092") \
-    .option("subscribe", "inventory_events") \
-    .option("startingOffsets", "earliest") \
-    .option("failOnDataLoss", "false") \
-    .load()
+spark.sql("""
+CREATE TABLE IF NOT EXISTS nessie.sales.streaming_events (
+    event_id STRING,
+    timestamp DOUBLE,
+    product_id STRING,
+    customer_id STRING,
+    revenue DOUBLE,
+    units_sold BIGINT,
+    ingested_at TIMESTAMP
+) USING iceberg
+""")
 
-# Parse JSON
-parsed_df = df.select(
-    from_json(col("value").cast("string"), schema).alias("data")
-).select("data.*")
+def start_stream(topic, schema, table_name):
+    print(f"🎧 Listening to Kafka Topic: {topic} -> nessie.{table_name}...")
+    
+    df = spark.readStream \
+        .format("kafka") \
+        .option("kafka.bootstrap.servers", "kafka:9092") \
+        .option("subscribe", topic) \
+        .option("startingOffsets", "earliest") \
+        .option("failOnDataLoss", "false") \
+        .load()
 
-# Add processing time
-enriched_df = parsed_df.withColumn("ingested_at", current_timestamp())
+    parsed_df = df.select(
+        from_json(col("value").cast("string"), schema).alias("data")
+    ).select("data.*")
 
-# Write to Iceberg
-print("🚀 Streaming data into Apache Iceberg (s3://warehouse)...")
-query = enriched_df.writeStream \
-    .format("iceberg") \
-    .outputMode("append") \
-    .trigger(processingTime="5 seconds") \
-    .option("path", "nessie.inventory.streaming_events") \
-    .option("checkpointLocation", "/opt/spark/work-dir/streaming/checkpoints/iceberg_stream_chkpt") \
-    .start()
+    enriched_df = parsed_df.withColumn("ingested_at", current_timestamp())
 
-# Wait for the stream to finish (or until user stops it with Ctrl+C)
-print("✅ Stream is running! Press Ctrl+C to stop.")
+    return enriched_df.writeStream \
+        .format("iceberg") \
+        .outputMode("append") \
+        .trigger(processingTime="5 seconds") \
+        .option("path", f"nessie.{table_name}") \
+        .option("checkpointLocation", f"/opt/spark/work-dir/streaming/checkpoints/v2_iceberg_{table_name.replace('.','_')}_chkpt") \
+        .start()
+
+# ── Start Streams ─────────────────────────────────────────────────────────────
+inv_query = start_stream("inventory_events", inventory_schema, "inventory.streaming_events")
+sales_query = start_stream("sales_events", sales_schema, "sales.streaming_events")
+
+print("✅ Both streams are running! Press Ctrl+C to stop.")
+
 try:
-    query.awaitTermination()
+    spark.streams.awaitAnyTermination()
 except KeyboardInterrupt:
-    print("Stopping stream...")
-    query.stop()
-
-print("\n" + "="*45)
-print("PIPELINE BENCHMARK RESULTS")
-print("="*45)
-# Count rows from Iceberg
-try:
-    final_count = spark.sql("SELECT COUNT(*) FROM nessie.inventory.streaming_events").collect()[0][0]
-    print(f"Total Events Processed : {final_count:,}")
-except Exception as e:
-    print("Could not query Iceberg. Table might not be initialized yet.")
-
-print("Throughput             : 185,430 events/sec (estimated target)")
-print("P95 End-to-End Latency : 1.8 sec")
-print("Data Loss              : 0")
-print("Duplicate Events       : 0 (Exactly-Once)")
-print("Iceberg Compaction     : Enabled")
-print("="*45)
+    print("Stopping streams...")
+    inv_query.stop()
+    sales_query.stop()

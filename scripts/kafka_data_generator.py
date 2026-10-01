@@ -7,11 +7,11 @@ import multiprocessing
 
 # Kafka configuration
 KAFKA_BROKER = 'localhost:29092'
-TOPIC_NAME = 'inventory_events'
 
 # Pre-generate templates to bypass Faker CPU bottleneck
-PRODUCTS = [f"PRD-{random.randint(1000, 9999)}" for _ in range(1000)]
-WAREHOUSES = [f"WH-{random.randint(1, 50)}" for _ in range(50)]
+PRODUCTS = [f"PRD-{random.randint(1000, 9999)}" for _ in range(100)]
+WAREHOUSES = [f"WH-{random.randint(1, 10)}" for _ in range(10)]
+CUSTOMERS = [f"CUST-{random.randint(100, 999)}" for _ in range(50)]
 
 def delivery_report(err, msg):
     """ Called once for each message produced to indicate delivery result. """
@@ -31,22 +31,35 @@ def worker_produce(worker_id):
     events_produced = 0
     start_time = time.time()
     
-    print(f"[Worker {worker_id}] Started continuous generation...")
+    print(f"[Worker {worker_id}] Started continuous generation for Sales & Inventory...")
     
     while True:
-        # Create a mock event
-        event = {
-            "event_id": str(uuid.uuid4()),
-            "timestamp": time.time(),
-            "product_id": random.choice(PRODUCTS),
-            "warehouse_id": random.choice(WAREHOUSES),
-            "quantity_change": random.randint(-50, 100),
-            "event_type": random.choice(["RECEIPT", "PICK", "ADJUSTMENT"])
-        }
+        event_type_choice = random.choice(["inventory", "sales"])
         
+        if event_type_choice == "inventory":
+            topic = "inventory_events"
+            event = {
+                "event_id": str(uuid.uuid4()),
+                "timestamp": time.time(),
+                "product_id": random.choice(PRODUCTS),
+                "warehouse_id": random.choice(WAREHOUSES),
+                "quantity_change": random.randint(-50, 100),
+                "event_type": random.choice(["RECEIPT", "PICK", "ADJUSTMENT"])
+            }
+        else:
+            topic = "sales_events"
+            event = {
+                "event_id": str(uuid.uuid4()),
+                "timestamp": time.time(),
+                "product_id": random.choice(PRODUCTS),
+                "customer_id": random.choice(CUSTOMERS),
+                "revenue": round(random.uniform(10.0, 500.0), 2),
+                "units_sold": random.randint(1, 5)
+            }
+            
         # Async produce
         producer.produce(
-            TOPIC_NAME,
+            topic,
             value=json.dumps(event).encode('utf-8'),
             callback=delivery_report
         )
@@ -59,15 +72,14 @@ def worker_produce(worker_id):
             
         if events_produced % 5000 == 0:
             elapsed = time.time() - start_time
-            print(f"[Worker {worker_id}] Generated {events_produced:,} events so far... (Avg: {events_produced/elapsed:,.0f} msg/sec)")
+            print(f"[Worker {worker_id}] Generated {events_produced:,} combined events so far... (Avg: {events_produced/elapsed:,.0f} msg/sec)")
             
         # SLOW DOWN: Sleep for a tiny fraction of a second to prevent CPU overload
-        # This keeps the stream steady but manageable for the laptop
         time.sleep(0.005)
 
 def main():
     print(f"🚀 Starting Steady, Continuous Kafka Generator...")
-    print(f"Target: Continuous stream to topic '{TOPIC_NAME}'")
+    print(f"Target: Continuous stream to topics 'inventory_events' and 'sales_events'")
     
     # Restrict to only 2 CPU cores to prevent laptop freezing
     num_workers = 2 

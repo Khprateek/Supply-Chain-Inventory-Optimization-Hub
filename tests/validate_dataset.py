@@ -11,13 +11,19 @@ def run_validation(data_dir: str = "data/raw"):
     print(f"Target Directory: {data_dir}")
     print("=" * 80)
     
-    # Load all parquet tables
+    # Load all parquet tables or directories
     tables = {}
     for f in os.listdir(data_dir):
-        if f.endswith(".parquet"):
-            t_name = f.replace(".parquet", "")
-            tables[t_name] = pq.read_table(os.path.join(data_dir, f)).to_pandas()
+        item_path = os.path.join(data_dir, f)
+        t_name = f.replace(".parquet", "") if f.endswith(".parquet") else f
+        
+        try:
+            # pd.read_parquet seamlessly handles both single files and partition directories
+            tables[t_name] = pd.read_parquet(item_path)
             print(f"  Loaded {t_name}: {len(tables[t_name]):,} rows")
+        except Exception as e:
+            # Skip items that are not valid parquet data (like .csv, etc.)
+            continue
             
     results = []
     

@@ -1,5 +1,5 @@
 supply_chain_hub:
-  target: local
+  target: dev
   outputs:
     dev:
       type: bigquery
@@ -7,7 +7,7 @@ supply_chain_hub:
       project: "{{ env_var('GCP_PROJECT_ID', 'smart-supply-and-inventory') }}"
       dataset: "{{ env_var('GCP_DATASET_DEV', 'sc_dev') }}"
       threads: 4
-      keyfile: "{{ env_var('GCP_KEYFILE_PATH', '../credentials/sa_dbt.json') }}"
+      keyfile: "{{ env_var('GCP_KEYFILE_PATH', 'credentials/sa_dbt.json') }}"
       location: US
       priority: interactive
       timeout_seconds: 300
@@ -26,7 +26,7 @@ supply_chain_hub:
       project: "{{ env_var('GCP_PROJECT_ID', 'smart-supply-and-inventory') }}"
       dataset: "{{ env_var('GCP_DATASET_PROD', 'analytics_supply_chain') }}"
       threads: 8
-      keyfile: "{{ env_var('GCP_KEYFILE_PATH', '../credentials/sa_dbt.json') }}"
+      keyfile: "{{ env_var('GCP_KEYFILE_PATH', 'credentials/sa_dbt.json') }}"
       location: US
       priority: interactive
       timeout_seconds: 600
