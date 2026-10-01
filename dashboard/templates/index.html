@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Supply Chain Optimization Hub</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Mermaid.js -->
+    <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+    <style>
+        body { background-color: #0f172a; color: #f8fafc; }
+        .card { background-color: #1e293b; border: 1px solid #334155; border-radius: 0.5rem; padding: 1.5rem; }
+        .mermaid { background-color: #f1f5f9; padding: 1rem; border-radius: 0.5rem; }
+    </style>
+</head>
+<body class="p-8 font-sans">
+    <div class="max-w-7xl mx-auto space-y-8">
+        <header class="text-center">
+            <h1 class="text-4xl font-bold text-blue-400">Enterprise Supply Chain Hub</h1>
+            <p class="text-slate-400 mt-2">Dual-Architecture Data Streaming Showdown</p>
+        </header>
+
+        <!-- Main Grid -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            
+            <!-- Architecture Diagram -->
+            <div class="col-span-1 lg:col-span-2 card">
+                <h2 class="text-xl font-bold mb-4 text-slate-200">Live Data Flow Architecture</h2>
+                <div class="mermaid">
+                    graph TD
+                        G[Python Generator] --> K[(Kafka)]
+                        
+                        subgraph Arch A: BigQuery
+                            K --> S1[PySpark Stream]
+                            S1 --> BQ[(BigQuery Raw)]
+                            DBT[dbt] --> BQ
+                        end
+                        
+                        subgraph Arch B: Iceberg
+                            K --> S2[Iceberg Stream]
+                            S2 --> ICE[(Nessie + MinIO)]
+                            TRINO[Trino Engine] --> ICE
+                        end
+                </div>
+            </div>
+
+            <!-- Control Panel -->
+            <div class="card space-y-4">
+                <h2 class="text-xl font-bold mb-4 text-slate-200">Control Panel</h2>
+                
+                <div class="flex items-center justify-between p-3 bg-slate-800 rounded">
+                    <span class="font-semibold text-sm">Event Generator</span>
+                    <button id="btn-generator" onclick="toggleProcess('generator')" class="px-4 py-1 text-sm font-bold rounded bg-slate-600 hover:bg-slate-500">START</button>
+                </div>
+                
+                <div class="flex items-center justify-between p-3 bg-slate-800 rounded">
+                    <span class="font-semibold text-sm">Arch A: BQ Stream</span>
+                    <button id="btn-stream_bq" onclick="toggleProcess('stream_bq')" class="px-4 py-1 text-sm font-bold rounded bg-slate-600 hover:bg-slate-500">START</button>
+                </div>
+                
+                <div class="flex items-center justify-between p-3 bg-slate-800 rounded">
+                    <span class="font-semibold text-sm">Arch B: Iceberg Stream</span>
+                    <button id="btn-stream_iceberg" onclick="toggleProcess('stream_iceberg')" class="px-4 py-1 text-sm font-bold rounded bg-slate-600 hover:bg-slate-500">START</button>
+                </div>
+                
+                <div class="flex items-center justify-between p-3 bg-slate-800 rounded border border-blue-500/30">
+                    <span class="font-semibold text-sm text-blue-300">Run dbt Transforms</span>
+                    <button id="btn-dbt_run" onclick="toggleProcess('dbt_run')" class="px-4 py-1 text-sm font-bold rounded bg-blue-600 hover:bg-blue-500">RUN</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Live Metrics Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <!-- BigQuery Stats -->
+            <div class="card border-t-4 border-t-green-500">
+                <h3 class="text-lg font-bold text-green-400 mb-2">Architecture A: BigQuery</h3>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <p class="text-xs text-slate-400 uppercase">Raw Rows Ingested</p>
+                        <p id="bq-rows" class="text-3xl font-bold">0</p>
+                    </div>
+                    <div>
+                        <p class="text-xs text-slate-400 uppercase">Throughput</p>
+                        <p id="bq-speed" class="text-3xl font-bold text-green-400">0 <span class="text-sm font-normal">events/s</span></p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Iceberg Stats -->
+            <div class="card border-t-4 border-t-purple-500">
+                <h3 class="text-lg font-bold text-purple-400 mb-2">Architecture B: Iceberg</h3>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <p class="text-xs text-slate-400 uppercase">Raw Rows Ingested</p>
+                        <p id="iceberg-rows" class="text-3xl font-bold">0</p>
+                    </div>
+                    <div>
+                        <p class="text-xs text-slate-400 uppercase">Throughput</p>
+                        <p id="iceberg-speed" class="text-3xl font-bold text-purple-400">0 <span class="text-sm font-normal">events/s</span></p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Showdown Matrix -->
+        <div class="card">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-2xl font-bold text-slate-200">The Showdown Matrix</h2>
+                <button onclick="fetchShowdown()" class="px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded text-sm font-bold flex items-center gap-2">
+                    Refresh Comparison
+                </button>
+            </div>
+            
+            <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse">
+                    <thead>
+                        <tr class="border-b border-slate-700 text-slate-400 text-sm">
+                            <th class="pb-3 font-semibold">Metric</th>
+                            <th class="pb-3 font-semibold text-green-400">Architecture A (BigQuery + dbt)</th>
+                            <th class="pb-3 font-semibold text-purple-400">Architecture B (Trino + Iceberg)</th>
+                            <th class="pb-3 font-semibold">Match Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="showdown-body">
+                        <!-- Filled by JS -->
+                        <tr><td colspan="4" class="text-center py-8 text-slate-500">Click Refresh to run queries</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Frontend Logic -->
+    <script>
+        mermaid.initialize({ startOnLoad: true, theme: 'default' });
+
+        const state = {
+            generator: 'stopped',
+            stream_bq: 'stopped',
+            stream_iceberg: 'stopped',
+            dbt_run: 'stopped'
+        };
+
+        const numFormat = new Intl.NumberFormat('en-US');
+        const currFormat = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
+
+        // Polling loop for status and live metrics
+        setInterval(async () => {
+            await fetchStatus();
+            await fetchLiveMetrics();
+        }, 2000);
+
+        async function fetchStatus() {
+            try {
+                const res = await fetch('/api/status');
+                const data = await res.json();
+                
+                for (const [pid, status] of Object.entries(data)) {
+                    state[pid] = status;
+                    updateButtonState(pid, status);
+                }
+            } catch (e) {
+                console.error("Status fetch failed", e);
+            }
+        }
+
+        async function fetchLiveMetrics() {
+            try {
+                const res = await fetch('/api/metrics/live');
+                const data = await res.json();
+                
+                document.getElementById('bq-rows').innerText = numFormat.format(data.bq.total_rows);
+                document.getElementById('bq-speed').innerHTML = `${numFormat.format(data.bq.rows_per_sec)} <span class="text-sm font-normal">events/s</span>`;
+                
+                document.getElementById('iceberg-rows').innerText = numFormat.format(data.iceberg.total_rows);
+                document.getElementById('iceberg-speed').innerHTML = `${numFormat.format(data.iceberg.rows_per_sec)} <span class="text-sm font-normal">events/s</span>`;
+            } catch (e) {
+                console.error("Metrics fetch failed", e);
+            }
+        }
+
+        async function fetchShowdown() {
+            const tbody = document.getElementById('showdown-body');
+            tbody.innerHTML = '<tr><td colspan="4" class="text-center py-8 text-slate-400 animate-pulse">Running queries...</td></tr>';
+            
+            try {
+                const res = await fetch('/api/metrics/showdown');
+                const data = await res.json();
+                
+                const bq = data.bq || {};
+                const ice = data.iceberg || {};
+                
+                const bqRev = bq.total_revenue || 0;
+                const iceRev = ice.total_revenue || 0;
+                
+                const bqUnits = bq.total_units_sold || 0;
+                const iceUnits = ice.total_units_sold || 0;
+                
+                const bqTrans = bq.total_transactions || 0;
+                const iceTrans = ice.total_transactions || 0;
+                
+                const makeRow = (name, v1, v2, isCurr) => {
+                    const s1 = isCurr ? currFormat.format(v1) : numFormat.format(v1);
+                    const s2 = isCurr ? currFormat.format(v2) : numFormat.format(v2);
+                    const match = (s1 === s2 && v1 !== 0) 
+                        ? '<span class="px-2 py-1 bg-green-500/20 text-green-400 rounded text-xs font-bold">MATCH</span>'
+                        : '<span class="px-2 py-1 bg-red-500/20 text-red-400 rounded text-xs font-bold">DIFF</span>';
+                        
+                    return `
+                        <tr class="border-b border-slate-700/50 hover:bg-slate-800/50">
+                            <td class="py-4 font-medium">${name}</td>
+                            <td class="py-4 text-green-300 font-mono">${s1}</td>
+                            <td class="py-4 text-purple-300 font-mono">${s2}</td>
+                            <td class="py-4">${match}</td>
+                        </tr>
+                    `;
+                };
+
+                tbody.innerHTML = 
+                    makeRow("Total Revenue", bqRev, iceRev, true) +
+                    makeRow("Total Units Sold", bqUnits, iceUnits, false) +
+                    makeRow("Total Transactions", bqTrans, iceTrans, false);
+
+            } catch (e) {
+                tbody.innerHTML = `<tr><td colspan="4" class="text-center py-8 text-red-400">Error: ${e.message}</td></tr>`;
+            }
+        }
+
+        async function toggleProcess(pid) {
+            const currentStatus = state[pid];
+            const action = currentStatus === 'running' ? 'stop' : 'start';
+            const btn = document.getElementById(`btn-${pid}`);
+            btn.innerText = "WAIT";
+            btn.className = "px-4 py-1 text-sm font-bold rounded bg-yellow-500 text-yellow-900";
+            
+            try {
+                await fetch(`/api/process/${pid}/${action}`, { method: 'POST' });
+                await fetchStatus(); // Refresh immediately
+            } catch (e) {
+                console.error("Action failed", e);
+            }
+        }
+
+        function updateButtonState(pid, status) {
+            const btn = document.getElementById(`btn-${pid}`);
+            if (!btn) return;
+            
+            if (status === 'running') {
+                btn.innerText = "STOP";
+                btn.className = "px-4 py-1 text-sm font-bold rounded bg-red-500 hover:bg-red-600 text-white shadow-lg shadow-red-500/20 animate-pulse";
+            } else {
+                btn.innerText = pid === 'dbt_run' ? "RUN" : "START";
+                btn.className = pid === 'dbt_run' 
+                    ? "px-4 py-1 text-sm font-bold rounded bg-blue-600 hover:bg-blue-500 text-white shadow"
+                    : "px-4 py-1 text-sm font-bold rounded bg-slate-600 hover:bg-slate-500 text-white shadow";
+            }
+        }
+        
+        // Initial load
+        fetchStatus();
+    </script>
+</body>
+</html>
