@@ -1,106 +1,160 @@
 # Enterprise Supply Chain & Inventory Optimization Hub
-## Dual-Architecture Streaming Pipeline
+## Comprehensive Architecture Specification
 
-This project implements a high-throughput streaming data pipeline to process supply chain and sales events. To evaluate modern data platform designs, the system is built using a **Dual-Architecture pattern**, running two separate data paradigms side-by-side:
-
-1. **Architecture A (Cloud Data Warehouse):** PySpark + Google BigQuery + dbt
-2. **Architecture B (Open Data Lakehouse):** PySpark + Apache Iceberg + Project Nessie + Trino
+This document provides a deep, technical dive into the **Dual-Architecture Streaming Pipeline**. The project evaluates two competing modern data paradigms—a **Cloud Data Warehouse** and an **Open Data Lakehouse**—by running them side-by-side against the same high-throughput, real-time data streams.
 
 ---
 
-## 🏗️ High-Level Architecture Diagram
+## 🏗️ 1. High-Level System Architecture
 
 ```mermaid
 flowchart TD
-    subgraph Event Generation
-        G[Python Data Generator] -->|Produces JSON Events| K1[(Kafka Topic: sales_events)]
-        G -->|Produces JSON Events| K2[(Kafka Topic: inventory_events)]
+    subgraph 1. Event Generation & Message Broker
+        G[Python Data Generator\n(Faker + AsyncIO)] -->|JSON| K1[(Kafka: sales_events)]
+        G -->|JSON| K2[(Kafka: inventory_events)]
+        ZK[Zookeeper] -.->|Manages| K1
+        ZK -.->|Manages| K2
     end
 
-    subgraph Architecture A: Cloud Data Warehouse
-        S1[PySpark Stream\n(foreachBatch + BQ Python Client)]
+    subgraph 2. Architecture A: Cloud Data Warehouse (BigQuery)
+        S1[PySpark Structured Stream\n(foreachBatch + Pandas)]
         K1 --> S1
         K2 --> S1
-        S1 -->|Inserts| BQ_RAW[(BigQuery:\nraw_supply_chain)]
-        DBT[dbt Transformations] -->|Selects & Aggregates| BQ_RAW
+        S1 -->|Google Cloud API| BQ_RAW[(BigQuery:\nraw_supply_chain)]
+        DBT[dbt-core\n(Data Build Tool)] -->|SQL / Jinja| BQ_RAW
         DBT -->|Materializes| BQ_MART[(BigQuery:\nsc_dev.fct_stream_sales_summary)]
     end
 
-    subgraph Architecture B: Open Data Lakehouse
-        S2[PySpark Stream\n(Iceberg DataFrame v2 API)]
+    subgraph 3. Architecture B: Open Data Lakehouse (Iceberg)
+        S2[PySpark Structured Stream\n(DataFrame v2 API)]
         K1 --> S2
         K2 --> S2
-        S2 -->|Appends| ICE_RAW[(MinIO/S3 Object Store:\niceberg.sales.streaming_events)]
-        NESSIE[Project Nessie\n(Iceberg Catalog)] -.->|Tracks Metadata| ICE_RAW
-        TRINO[Trino Query Engine] -->|Reads & Aggregates| ICE_RAW
+        S2 -->|S3A / Parquet| ICE_RAW[(MinIO Object Store:\niceberg.sales / iceberg.inventory)]
+        NESSIE[Project Nessie] -.->|Iceberg Catalog API| ICE_RAW
+        TRINO[Trino SQL Engine] -->|Reads Iceberg Metadata| ICE_RAW
     end
 
-    subgraph Reconciliation
-        COMPARE[Reconciliation Script\n(compare_architectures.py)]
-        COMPARE -->|Queries| BQ_MART
-        COMPARE -->|Queries| TRINO
+    subgraph 4. Visualization & Control
+        FASTAPI[FastAPI Backend\nProcess Manager] -->|Subprocess / taskkill| G
+        FASTAPI -->|Subprocess| S1
+        FASTAPI -->|Docker Exec| S2
+        UI[Interactive Dashboard\nVanilla JS + Tailwind] -->|REST API| FASTAPI
+        UI -->|Showdown Queries| BQ_MART
+        UI -->|Showdown Queries| TRINO
     end
 ```
 
 ---
 
-## ⚙️ Core Components
+## 📡 2. Data Generation & Event Schemas
 
-### 1. Data Generation & Ingestion
-- **Event Generator** (`scripts/kafka_data_generator.py`): Simulates continuous, high-volume transactions and inventory movements, publishing to Kafka topics.
-- **Message Broker** (`Docker: Kafka + Zookeeper`): Buffers incoming events, allowing independent downstream consumers to process data at their own pace.
+The `kafka_data_generator.py` script simulates a massive supply chain network generating continuous events. It uses a thread-safe Kafka producer to inject thousands of events per second into two distinct topics.
 
-### 2. Architecture A: BigQuery & dbt
-This architecture represents the modern cloud ELT standard.
-- **Ingestion** (`pyspark_jobs/streaming/05_bigquery_stream.py`): A PySpark structured streaming job reads from Kafka. Due to known JVM shading bugs with the official Spark BigQuery connector on Java 11/17, this job uses `foreachBatch` to convert micro-batches to Pandas DataFrames and loads them into BigQuery using the native Python `google-cloud-bigquery` client.
-- **Transformation** (`dbt/`): dbt models query the raw tables, apply business logic, and aggregate the data into a persistent `fct_stream_sales_summary` table. 
+### Kafka Topic: `sales_events`
+Simulates customer orders being placed across various channels.
+* **Format:** JSON
+* **Throughput:** ~High
+* **Schema:**
+  * `event_id` (UUID): Unique transaction identifier.
+  * `product_id` (String): Product SKU reference.
+  * `quantity` (Int): Units ordered.
+  * `revenue` (Float): Transaction value.
+  * `event_timestamp` (ISO 8601): Time of purchase.
 
-### 3. Architecture B: Iceberg, Nessie, & Trino
-This architecture represents the Open Data Lakehouse paradigm, decoupling storage, cataloging, and compute.
-- **Storage** (`Docker: Localstack S3`): All data is stored locally in S3-compatible storage in the open Apache Parquet format.
-- **Catalog** (`Docker: Project Nessie`): Acts as the catalog for Apache Iceberg, enabling Git-like branching, tagging, and atomic commits for the data lake.
-- **Ingestion** (`pyspark_jobs/streaming/04_iceberg_stream.py`): A PySpark structured streaming job runs inside a Docker Spark cluster. It reads from Kafka and uses the Iceberg Spark extensions to perform transactional streaming appends directly into S3. 
-- **Compute / Transformation**: Originally intended to be a PySpark batch job, JVM HotSpot compiler bugs (`signature.cpp:53` segmentation faults on Java 11) required a shift in architecture. We lean completely into the Lakehouse paradigm by using **Trino** (`Docker: Trino`) to dynamically query and aggregate the raw Iceberg tables on-the-fly at read time, completely sidestepping JVM compute limitations.
-
-### 4. Reconciliation
-- **Comparison Engine** (`scripts/compare_architectures.py`): A Python script that simultaneously connects to Google BigQuery and Trino, executes aggregation queries across both architectures, and renders a side-by-side terminal showdown of the metrics (Total Revenue, Units Sold, Transactions).
-
----
-
-## 🛠️ Tech Stack & Infrastructure
-
-- **Compute & Orchestration:** Docker Compose, PySpark 3.5
-- **Message Broker:** Apache Kafka 3.4
-- **Data Warehouse:** Google BigQuery
-- **Data Transformation:** dbt-core 1.8.0, dbt-bigquery
-- **Data Lakehouse:** Apache Iceberg 1.5.0
-- **Data Catalog:** Project Nessie 0.77.1
-- **Object Storage:** LocalStack (S3)
-- **Query Engine:** Trino
-- **Languages:** Python 3.12, SQL
+### Kafka Topic: `inventory_events`
+Simulates stock movements, warehouse transfers, and adjustments.
+* **Format:** JSON
+* **Throughput:** ~Medium
+* **Schema:**
+  * `event_id` (UUID): Unique movement identifier.
+  * `warehouse_id` (String): Origin/Destination facility.
+  * `product_id` (String): Product SKU reference.
+  * `quantity_change` (Int): Positive for receipts, negative for transfers.
+  * `movement_type` (Enum): `TRANSFER`, `RECEIPT`, `ADJUSTMENT`.
+  * `event_timestamp` (ISO 8601): Time of movement.
 
 ---
 
-## 🚀 How to Run
+## ☁️ 3. Architecture A: BigQuery & dbt (Cloud Data Warehouse)
 
-1. **Start the Infrastructure**
-   ```powershell
-   docker-compose up -d
-   ```
-2. **Start the Data Generator**
-   ```powershell
-   python scripts/kafka_data_generator.py
-   ```
-3. **Run Architecture A (BigQuery)**
-   ```powershell
-   python pyspark_jobs/streaming/05_bigquery_stream.py
-   .\dbt.cmd run --project-dir dbt --select streaming
-   ```
-4. **Run Architecture B (Iceberg)**
-   ```powershell
-   .\run_iceberg_stream.cmd
-   ```
-5. **Run the Showdown**
-   ```powershell
-   python scripts/compare_architectures.py
-   ```
+This architecture mimics the industry-standard ELT (Extract, Load, Transform) approach utilizing fully managed cloud services.
+
+### Ingestion Strategy (`05_bigquery_stream.py`)
+* **Framework:** PySpark 3.5 Structured Streaming
+* **The Engineering Challenge:** The official Spark BigQuery connector (`spark-bigquery-with-dependencies`) relies on an older version of Google Guice for dependency injection. When running on modern JDKs (Java 11+), this causes severe bytecode shading conflicts.
+* **The Solution:** We implemented a custom `foreachBatch` sink. Spark groups the streaming Kafka data into micro-batches, which are then converted to Pandas DataFrames. The native `google-cloud-bigquery` Python SDK is then used to safely and efficiently insert the data into BigQuery `raw_supply_chain` tables.
+
+### Transformation Strategy (`dbt/`)
+* **Framework:** `dbt-core` and `dbt-bigquery`
+* **Workflow:** 
+  1. `stg_stream_sales` and `stg_stream_inventory` act as staging layers, casting JSON strings to correct data types and extracting timestamps.
+  2. `fct_stream_sales_summary` aggregates the staging data by day and product, materializing the results natively in BigQuery.
+
+---
+
+## 🧊 4. Architecture B: Iceberg, Nessie & Trino (Open Data Lakehouse)
+
+This architecture represents the cutting-edge decoupling of Storage, Catalog, and Compute, allowing massive scale without vendor lock-in.
+
+### Infrastructure Layer (Dockerized)
+* **Storage (MinIO):** A local S3-compatible object store holds all data in the open Apache Parquet format.
+* **Catalog (Project Nessie):** Acts as the meta-store for Iceberg. Nessie provides Git-like capabilities for data lakes (branching, tagging, atomic commits), ensuring that Spark and Trino stay perfectly synchronized when reading/writing to the data lake.
+* **Compute (Trino):** A massively parallel SQL query engine designed to read Iceberg tables directly from object storage without moving the data.
+
+### Ingestion Strategy (`04_iceberg_stream.py`)
+* **Framework:** PySpark 3.5 running inside a Dockerized Spark Cluster (`spark-master`).
+* **Workflow:** Uses the native Iceberg DataFrame v2 API (`.writeStream.format("iceberg").outputMode("append")`) to continually commit new streaming data directly into `nessie.sales.streaming_events`.
+
+### Transformation Strategy (The Trino Pivot)
+* **The Engineering Challenge:** Originally designed to run batch aggregations via PySpark SQL (`CREATE TABLE AS SELECT`), we encountered a fatal JVM HotSpot C2 compiler bug (`signature.cpp:53 expecting (`) specific to Java 11 when compiling certain AWS SDK multi-release JAR lambdas. 
+* **The Solution:** We bypassed Spark entirely for the transformation phase. We embraced the true nature of a decoupled Lakehouse by utilizing **Trino** to dynamically query and aggregate the raw Iceberg tables on-the-fly. Trino operates on Java 17/21 and parses the Iceberg metadata instantaneously, executing massive aggregations without crashing.
+
+---
+
+## 🎛️ 5. The Interactive Web Dashboard
+
+To unify the control and visualization of these dual pipelines, a custom web dashboard was built.
+
+* **Backend (FastAPI):** A lightweight Python server acting as the process manager. It uses the `subprocess` module to asynchronously launch the Python generator, PySpark streams, and dbt runs. It implements custom `taskkill /T` tree-killing commands to safely terminate complex Docker processes on Windows without leaving ghost/zombie processes.
+* **Metrics API:** Two dedicated endpoints (`/api/metrics/showdown` and `/api/metrics/live`) query BigQuery and Trino simultaneously. They track row counts and calculate live ingestion throughput (events per second) using highly optimized metadata queries (`__TABLES__` in BigQuery and `COUNT(*)` in Trino).
+* **Frontend (Vanilla JS + Tailwind):** A dark-mode, single-page application served by FastAPI. It utilizes `Mermaid.js` to render the architectural diagram and relies on AJAX polling to dynamically update the UI state, counters, and showdown matrix in real-time without refreshing the browser.
+
+---
+
+## 🌐 6. Network & Port Mapping
+
+The local Docker network (`app-tier`) exposes the following services for local development and integration:
+
+| Service | Host Port | Internal Port | Description |
+|:---|---:|---:|:---|
+| **FastAPI Dashboard** | `8000` | `8000` | Interactive UI and Process API |
+| **Kafka Broker** | `9092` | `29092` | Event streaming bus |
+| **Zookeeper** | `2181` | `2181` | Kafka cluster coordination |
+| **MinIO (S3)** | `9000` | `9000` | Local object storage |
+| **MinIO Console** | `9001` | `9001` | S3 Web UI |
+| **Project Nessie** | `19120` | `19120` | Iceberg Catalog REST API |
+| **Trino** | `8080` | `8080` | Distributed SQL query engine |
+| **Spark Master** | `8081` | `8081` | Spark Cluster UI |
+
+---
+
+## 📂 7. Project File Structure
+
+```text
+├── Asset/                        # PowerBI dashboard files & PDFs
+├── dashboard/                    # FastAPI and UI for the control panel
+├── dbt/                          # dbt project for Architecture A
+│   ├── models/                   # dbt SQL models (staging, intermediate, marts)
+│   └── dbt_project.yml
+├── docker/                       # Docker initialization scripts (Trino, S3, etc.)
+├── docker-compose.yml            # Core infrastructure for the showdown
+├── docs/                         # Extensive project documentation & ADRs
+├── orchestration/                # Airflow DAGs
+├── powerbi/                      # DAX measures and model definitions
+├── pyspark_jobs/                 # PySpark code for architectures
+│   ├── complex_transforms/       # Batch transformation logic
+│   ├── streaming/                # Streaming jobs (Iceberg vs BigQuery)
+│   └── utils/                    # Spark session and logging utilities
+├── scripts/                      # Utility scripts (Kafka generator, setup, etc.)
+└── tests/                        # Data validation and tests
+```

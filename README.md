@@ -121,3 +121,24 @@ Building this on a local Windows Docker environment required solving several mas
 - **Zombie Processes:** Windows file locks caused `rm -rf` inside WSL containers to silently fail, leaving zombie streams. We implemented `taskkill /T` process tree management in our FastAPI dashboard to guarantee clean shutdowns.
 
 ---
+
+## 📂 Project File Structure
+
+```text
+├── Asset/                        # PowerBI dashboard files & PDFs
+├── dashboard/                    # FastAPI and UI for the control panel
+├── dbt/                          # dbt project for Architecture A
+│   ├── models/                   # dbt SQL models (staging, intermediate, marts)
+│   └── dbt_project.yml
+├── docker/                       # Docker initialization scripts (Trino, S3, etc.)
+├── docker-compose.yml            # Core infrastructure for the showdown
+├── docs/                         # Extensive project documentation & ADRs
+├── orchestration/                # Airflow DAGs
+├── powerbi/                      # DAX measures and model definitions
+├── pyspark_jobs/                 # PySpark code for architectures
+│   ├── complex_transforms/       # Batch transformation logic
+│   ├── streaming/                # Streaming jobs (Iceberg vs BigQuery)
+│   └── utils/                    # Spark session and logging utilities
+├── scripts/                      # Utility scripts (Kafka generator, setup, etc.)
+└── tests/                        # Data validation and tests
+```
