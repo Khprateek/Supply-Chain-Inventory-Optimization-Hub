@@ -56,6 +56,7 @@ conf/spark/jars/*.jar
 spark-warehouse/
 spark-events/
 checkpoints/
+pyspark_jobs/.ivy2/
 
 # Local .env file with real credentials (NEVER commit)
 .env
@@ -66,3 +67,18 @@ credentials/
 # Data files
 data/
 DATA_ENGINEERING_AUDIT_v2.md
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+
+# Spark / Ivy
+pyspark_jobs/.ivy2/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db

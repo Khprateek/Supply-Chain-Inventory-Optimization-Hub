@@ -36,6 +36,7 @@ COMMANDS = {
     "generator": [VENV_PYTHON, os.path.join(PROJECT_ROOT, "scripts", "kafka_data_generator.py")],
     "stream_bq": [VENV_PYTHON, os.path.join(PROJECT_ROOT, "pyspark_jobs", "streaming", "05_bigquery_stream.py")],
     "stream_iceberg": [os.path.join(PROJECT_ROOT, "run_iceberg_stream.cmd")],
+    "transform_iceberg": [os.path.join(PROJECT_ROOT, "run_iceberg_transform.cmd")],
     "dbt_run": [os.path.join(PROJECT_ROOT, "dbt.cmd"), "run", "--project-dir", os.path.join(PROJECT_ROOT, "dbt"), "--select", "streaming"]
 }
 

@@ -158,3 +158,109 @@ The local Docker network (`app-tier`) exposes the following services for local d
 ├── scripts/                      # Utility scripts (Kafka generator, setup, etc.)
 └── tests/                        # Data validation and tests
 ```
+
+
+---
+
+## 🏗️ 8. Target Architecture Evolution (Stream-First vs Store-First)
+
+Currently, the project evaluates BigQuery and Iceberg using structurally similar data flows (Spark acts as an ingestion mechanism for both). A future architectural migration is planned to convert this into a strict **Stream-First** vs **Store-First** conceptual comparison.
+
+### The Architectural Problem
+1. **Architecture A (BigQuery) currently acts as Store-First:** Spark acts merely as a dumb ingestion pipe. The actual computation and schema enforcement (parsing the JSON) happens *after* durable storage via dbt.
+2. **Architecture B (Iceberg) currently acts as Stream-First:** Spark enforces the schema and parses the JSON payload *before* the data lands in Iceberg.
+
+### The Target Design
+
+To achieve a true comparison, the computational boundaries will be swapped:
+
+**Stream-First (Architecture A - BigQuery)**
+Computation happens *in-flight*.
+* **Streaming Compute:** PySpark parses JSON, enforces schemas, and validates data *before* storage.
+* **Structured Storage:** BigQuery holds the fully typed, structured data.
+* **Lightweight Analytics:** dbt performs final aggregations.
+
+**Store-First (Architecture B - Iceberg)**
+Computation happens *after* durable storage.
+* **Raw Durable Store:** PySpark is refactored into a "Dumb Pipe Writer", writing exact raw Kafka JSON strings to Iceberg without parsing them.
+* **Batch/Micro-Batch Compute:** A secondary Spark or Trino job reads the Iceberg Raw tables, parses the JSON, and loads it into structured Iceberg Marts.
+
+### Design Decisions & Constraints
+* **Store-First Ingestion Mechanism:** Rather than introducing heavy infrastructure like Kafka Connect, the existing PySpark Structured Streaming job will be stripped of all rom_json processing. It will serve exclusively as a byte-for-byte persistent ingestion layer, aligning perfectly with the store-first paradigm while remaining lightweight.
+* **Comparison Integrity:** Both architectures will continue to process the exact same Kafka source events and volume, allowing an honest comparison of **Time to Durable Storage** vs. **Time to Structured Insights**.
+
+`mermaid
+graph TD
+    classDef stream fill:#1e293b,stroke:#3b82f6,stroke-width:2px;
+    classDef store fill:#1e293b,stroke:#10b981,stroke-width:2px;
+    classDef compute fill:#1e293b,stroke:#8b5cf6,stroke-width:2px;
+    
+    G[Python Event Generator] --> K[(Kafka Cluster)]
+    
+    subgraph Arch_A [ARCHITECTURE A: Stream-First]
+        K --> S1[PySpark Streaming Compute]:::compute
+        S1 -- "Parses JSON & Enforces Schema" --> BQ[(BigQuery Structured Store)]:::store
+        BQ --> DBT[dbt Micro-batch]:::compute
+        DBT --> BQ_MART[(BigQuery Mart)]:::store
+    end
+    
+    subgraph Arch_B [ARCHITECTURE B: Store-First]
+        K --> S2[PySpark Raw Ingestion]:::stream
+        S2 -- "Dumb Pipe: Exact Byte Copy" --> ICE_RAW[(Iceberg Raw Store)]:::store
+        ICE_RAW --> S3[PySpark Batch Compute]:::compute
+        S3 -- "Parses JSON & Enforces Schema" --> ICE_MART[(Iceberg Structured Store)]:::store
+    end
+`
+
+
+---
+
+## 🏗️ 8. Target Architecture Evolution (Stream-First vs Store-First)
+
+Currently, the project evaluates BigQuery and Iceberg using structurally similar data flows (Spark acts as an ingestion mechanism for both). A future architectural migration is planned to convert this into a strict **Stream-First** vs **Store-First** conceptual comparison.
+
+### The Architectural Problem
+1. **Architecture A (BigQuery) currently acts as Store-First:** Spark acts merely as a dumb ingestion pipe. The actual computation and schema enforcement (parsing the JSON) happens *after* durable storage via `dbt`.
+2. **Architecture B (Iceberg) currently acts as Stream-First:** Spark enforces the schema and parses the JSON payload *before* the data lands in Iceberg.
+
+### The Target Design
+
+To achieve a true comparison, the computational boundaries will be swapped:
+
+**Stream-First (Architecture A - BigQuery)**
+Computation happens *in-flight*.
+* **Streaming Compute:** PySpark parses JSON, enforces schemas, and validates data *before* storage.
+* **Structured Storage:** BigQuery holds the fully typed, structured data.
+* **Lightweight Analytics:** dbt performs final aggregations.
+
+**Store-First (Architecture B - Iceberg)**
+Computation happens *after* durable storage.
+* **Raw Durable Store:** PySpark is refactored into a "Dumb Pipe Writer", writing exact raw Kafka JSON strings to Iceberg without parsing them.
+* **Batch/Micro-Batch Compute:** A secondary Spark or Trino job reads the Iceberg Raw tables, parses the JSON, and loads it into structured Iceberg Marts.
+
+### Design Decisions & Constraints
+* **Store-First Ingestion Mechanism:** Rather than introducing heavy infrastructure like Kafka Connect, the existing PySpark Structured Streaming job will be stripped of all `from_json` processing. It will serve exclusively as a byte-for-byte persistent ingestion layer, aligning perfectly with the store-first paradigm while remaining lightweight.
+* **Comparison Integrity:** Both architectures will continue to process the exact same Kafka source events and volume, allowing an honest comparison of **Time to Durable Storage** vs. **Time to Structured Insights**.
+
+```mermaid
+graph TD
+    classDef stream fill:#1e293b,stroke:#3b82f6,stroke-width:2px;
+    classDef store fill:#1e293b,stroke:#10b981,stroke-width:2px;
+    classDef compute fill:#1e293b,stroke:#8b5cf6,stroke-width:2px;
+    
+    G[Python Event Generator] --> K[(Kafka Cluster)]
+    
+    subgraph Arch_A [ARCHITECTURE A: Stream-First]
+        K --> S1[PySpark Streaming Compute]:::compute
+        S1 -- "Parses JSON & Enforces Schema" --> BQ[(BigQuery Structured Store)]:::store
+        BQ --> DBT[dbt Micro-batch]:::compute
+        DBT --> BQ_MART[(BigQuery Mart)]:::store
+    end
+    
+    subgraph Arch_B [ARCHITECTURE B: Store-First]
+        K --> S2[PySpark Raw Ingestion]:::stream
+        S2 -- "Dumb Pipe: Exact Byte Copy" --> ICE_RAW[(Iceberg Raw Store)]:::store
+        ICE_RAW --> S3[PySpark Batch Compute]:::compute
+        S3 -- "Parses JSON & Enforces Schema" --> ICE_MART[(Iceberg Structured Store)]:::store
+    end
+```

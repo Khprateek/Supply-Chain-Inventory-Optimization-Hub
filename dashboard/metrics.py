@@ -24,7 +24,7 @@ TRINO_CATALOG = "iceberg"
 TRINO_SCHEMA_MART = "marts"
 TRINO_TABLE_MART = "fact_sales_summary"
 TRINO_SCHEMA_RAW = "sales"
-TRINO_TABLE_RAW = "streaming_events"
+TRINO_TABLE_RAW = "raw_events"
 
 # Keep track of previous counts for speed calculation
 speed_metrics = {
@@ -142,4 +142,81 @@ def get_live_metrics():
     except Exception as e:
         print("Trino Error:", e)
 
+    return result
+
+import json
+from confluent_kafka import Consumer, TopicPartition
+
+kafka_metrics_state = {
+    "topics": {},
+    "timestamp": 0
+}
+
+@router.get("/metrics/kafka")
+def get_kafka_metrics():
+    global kafka_metrics_state
+    
+    current_time = time.time()
+    dt = current_time - kafka_metrics_state["timestamp"]
+    
+    result = {"topics": {}, "global_events_sec": 0, "healthy": True}
+    
+    try:
+        consumer = Consumer({"bootstrap.servers": "localhost:29092", "group.id": "dashboard-metric-reader"})
+        total_rate = 0
+        for topic in ["sales_events", "inventory_events"]:
+            md = consumer.list_topics(topic, timeout=1.5)
+            if md and topic in md.topics:
+                t = md.topics[topic]
+                result["topics"][topic] = {"partitions": len(t.partitions), "events_sec": 0, "total_events": 0}
+                
+                # Get high watermarks
+                partitions = [TopicPartition(topic, p) for p in t.partitions]
+                total_high = 0
+                for p in partitions:
+                    low, high = consumer.get_watermark_offsets(p, timeout=1.0)
+                    if high is not None and high > 0:
+                        total_high += high
+                    
+                result["topics"][topic]["total_events"] = total_high
+                
+                if dt > 0 and topic in kafka_metrics_state["topics"]:
+                    prev_total = kafka_metrics_state["topics"][topic]["total_events"]
+                    rate = max(0, int((total_high - prev_total) / dt))
+                    result["topics"][topic]["events_sec"] = rate
+                    total_rate += rate
+                    
+        result["global_events_sec"] = total_rate
+        
+        for t, data in result["topics"].items():
+            if t not in kafka_metrics_state["topics"]:
+                kafka_metrics_state["topics"][t] = {}
+            kafka_metrics_state["topics"][t]["total_events"] = data["total_events"]
+        kafka_metrics_state["timestamp"] = current_time
+    except Exception as e:
+        result["healthy"] = False
+        result["error"] = str(e)
+        
+    return result
+
+@router.get("/metrics/spark")
+def get_spark_metrics():
+    result = {"bq": None, "iceberg": None}
+    
+    bq_path = os.path.join(PROJECT_ROOT, "dashboard", "metrics_bq.json")
+    if os.path.exists(bq_path):
+        try:
+            with open(bq_path, "r") as f:
+                result["bq"] = json.load(f)
+        except:
+            pass
+            
+    ice_path = os.path.join(PROJECT_ROOT, "pyspark_jobs", "metrics_iceberg.json")
+    if os.path.exists(ice_path):
+        try:
+            with open(ice_path, "r") as f:
+                result["iceberg"] = json.load(f)
+        except:
+            pass
+            
     return result
