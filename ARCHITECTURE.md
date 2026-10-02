@@ -57,9 +57,9 @@ Simulates customer orders being placed across various channels.
 * **Schema:**
   * `event_id` (UUID): Unique transaction identifier.
   * `product_id` (String): Product SKU reference.
-  * `quantity` (Int): Units ordered.
+  * `units_sold` (Int): Units ordered.
   * `revenue` (Float): Transaction value.
-  * `event_timestamp` (ISO 8601): Time of purchase.
+  * `timestamp` (Unix epoch float): Time of purchase.
 
 ### Kafka Topic: `inventory_events`
 Simulates stock movements, warehouse transfers, and adjustments.
@@ -70,8 +70,8 @@ Simulates stock movements, warehouse transfers, and adjustments.
   * `warehouse_id` (String): Origin/Destination facility.
   * `product_id` (String): Product SKU reference.
   * `quantity_change` (Int): Positive for receipts, negative for transfers.
-  * `movement_type` (Enum): `TRANSFER`, `RECEIPT`, `ADJUSTMENT`.
-  * `event_timestamp` (ISO 8601): Time of movement.
+  * `event_type` (Enum): `RECEIPT`, `PICK`, `ADJUSTMENT`.
+  * `timestamp` (Unix epoch float): Time of movement.
 
 ---
 

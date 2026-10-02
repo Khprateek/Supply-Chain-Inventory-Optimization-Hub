@@ -96,6 +96,8 @@ def start_stream(topic, schema, table_name):
         .option("subscribe", topic) \
         .option("startingOffsets", "latest") \
         .option("failOnDataLoss", "true") \
+        .option("maxOffsetsPerTrigger", 50000) \
+        .option("minPartitions", 16) \
         .load()
 
     parsed_df = df.select(

@@ -8,21 +8,31 @@ import multiprocessing
 # Kafka configuration
 KAFKA_BROKER = 'localhost:29092'
 
+import os
+
 # Pre-generate templates to bypass Faker CPU bottleneck
+GENERATOR_SEED = int(os.environ.get("GENERATOR_SEED", "42"))
+random.seed(GENERATOR_SEED)
+
 PRODUCTS = [f"PRD-{random.randint(1000, 9999)}" for _ in range(100)]
-WAREHOUSES = [f"WH-{random.randint(1, 10)}" for _ in range(10)]
+WAREHOUSES = sorted({f"WH-{random.randint(1, 10)}" for _ in range(10)})
 CUSTOMERS = [f"CUST-{random.randint(100, 999)}" for _ in range(50)]
 
-_delivery_errors = 0
+import threading
+_error_count = 0
+_error_lock = threading.Lock()
 
 def delivery_report(err, msg):
     """ Called once for each message produced to indicate delivery result. """
-    global _delivery_errors
+    global _error_count
     if err is not None:
-        _delivery_errors += 1
-        # Print every 100th error to avoid log flooding
-        if _delivery_errors % 100 == 1:
-            print(f"[DELIVERY ERROR #{_delivery_errors}] {err}", flush=True)
+        with _error_lock:
+            _error_count += 1
+            ec = _error_count
+        # Log every error; suppress repetitive logging at high error rates
+        if ec <= 5 or ec % 100 == 0:
+            print(f"[DELIVERY ERROR #{ec}] topic={msg.topic()} "
+                  f"partition={msg.partition()} err={err}", flush=True)
 
 def worker_produce(worker_id):
     """ Worker function to produce messages continuously at a steady pace """
@@ -54,13 +64,22 @@ def worker_produce(worker_id):
         
         if event_type_choice == "inventory":
             topic = "inventory_events"
+            event_type = random.choice(["RECEIPT", "PICK", "ADJUSTMENT"])
+            
+            if event_type == "RECEIPT":
+                quantity_change = random.randint(1, 100)    # always positive
+            elif event_type == "PICK":
+                quantity_change = random.randint(-50, -1)   # always negative
+            else:  # ADJUSTMENT
+                quantity_change = random.randint(-20, 20)   # signed, realistic
+                
             event = {
                 "event_id": str(uuid.uuid4()),
                 "timestamp": time.time(),
                 "product_id": random.choice(PRODUCTS),
                 "warehouse_id": random.choice(WAREHOUSES),
-                "quantity_change": random.randint(-50, 100),
-                "event_type": random.choice(["RECEIPT", "PICK", "ADJUSTMENT"])
+                "quantity_change": quantity_change,
+                "event_type": event_type,
             }
         else:
             topic = "sales_events"
@@ -84,8 +103,9 @@ def worker_produce(worker_id):
                 )
                 break
             except BufferError:
-                # Queue is full, backpressure kicks in. Block and wait for space.
-                producer.poll(0.1)
+                # Queue full — Kafka is not keeping up. Back off and drain.
+                print(f"[Worker {worker_id}] Producer queue full. Backing off...", flush=True)
+                producer.poll(1.0)   # block for 1s to drain callbacks and allow delivery
         
         events_produced += 1
         
@@ -100,10 +120,10 @@ def worker_produce(worker_id):
             print(f"[Worker {worker_id}] Generated {events_produced:,} combined events so far... (Avg: {events_produced/elapsed:,.0f} msg/sec)")
 
     # Graceful drain on exit
-    print(f"[Worker {worker_id}] Flushing remaining messages...", flush=True)
-    remaining = producer.flush(timeout=10)   # wait up to 10s for delivery
+    print(f"[Worker {worker_id}] Flushing {len(producer)} queued messages...", flush=True)
+    remaining = producer.flush(timeout=15)   # wait up to 15s for delivery
     if remaining > 0:
-        print(f"[Worker {worker_id}] WARNING: {remaining} messages not delivered", flush=True)
+        print(f"[Worker {worker_id}] WARNING: {remaining} messages not delivered at shutdown.", flush=True)
 
 def main():
     print(f"Starting Steady, Continuous Kafka Generator...")

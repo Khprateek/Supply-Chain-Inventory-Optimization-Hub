@@ -83,7 +83,8 @@ def create_spark_session() -> SparkSession:
 def stream_topic_to_bq(spark: SparkSession, topic: str, bq_table: str):
     """
     Read a Kafka topic and write each micro-batch to BigQuery via the
-    Python client (pandas-based). This sidesteps the JVM connector entirely.
+    distributed Python client (foreachPartition). This sidesteps the JVM connector entirely
+    while maintaining full parallel cluster distribution.
     """
     print(f"[ARCH-A] Subscribing to '{topic}' -> BQ table '{GCP_PROJECT}.{BQ_DATASET}.{bq_table}'")
 
@@ -94,6 +95,8 @@ def stream_topic_to_bq(spark: SparkSession, topic: str, bq_table: str):
         .option("subscribe", topic)
         .option("startingOffsets", "latest")
         .option("failOnDataLoss", "true")
+        .option("maxOffsetsPerTrigger", 50000)
+        .option("minPartitions", 16)
         .load()
         .selectExpr(
             "CAST(value AS STRING) AS raw_payload",
@@ -105,33 +108,41 @@ def stream_topic_to_bq(spark: SparkSession, topic: str, bq_table: str):
         if batch_df.isEmpty():
             return
 
-        # Module-level singleton to avoid OAuth/HTTP overhead on every micro-batch
-        global _BQ_CLIENT
-        if '_BQ_CLIENT' not in globals() or _BQ_CLIENT is None:
-            from google.cloud import bigquery as bq
-            _BQ_CLIENT = bq.Client(project=GCP_PROJECT)
+        def process_partition(iterator):
+            # Module-level singleton to avoid OAuth/HTTP overhead on every partition
+            global _BQ_CLIENT
+            if '_BQ_CLIENT' not in globals() or _BQ_CLIENT is None:
+                from google.cloud import bigquery as bq
+                _BQ_CLIENT = bq.Client(project=GCP_PROJECT)
 
-        client = _BQ_CLIENT
-        table_ref = f"{GCP_PROJECT}.{BQ_DATASET}.{bq_table}"
+            client = _BQ_CLIENT
+            table_ref = f"{GCP_PROJECT}.{BQ_DATASET}.{bq_table}"
+
+            records = []
+            for row in iterator:
+                row_dict = row.asDict()
+                # Cast datetime columns to string for JSON serialization
+                for k, v in row_dict.items():
+                    if hasattr(v, 'isoformat'):
+                        row_dict[k] = str(v)
+                records.append(row_dict)
+
+                # Batch inserts per partition
+                if len(records) >= 5000:
+                    errors = client.insert_rows_json(table_ref, records)
+                    if errors:
+                        print(f"[ARCH-A][ERROR] worker insert errors. Sample: {errors[:2]}")
+                    records.clear()
+
+            if records:
+                errors = client.insert_rows_json(table_ref, records)
+                if errors:
+                    print(f"[ARCH-A][ERROR] worker insert errors. Sample: {errors[:2]}")
 
         try:
-            # Convert micro-batch to Pandas
-            pdf = batch_df.toPandas()
-            
-            # Cast datetime columns to string for JSON serialization
-            for col in pdf.select_dtypes(include=['datetime64', 'datetimetz', '<M8[ns]']).columns:
-                pdf[col] = pdf[col].astype(str)
-                
-            records = pdf.to_dict(orient="records")
-
-            # Use low-latency streaming inserts (~10ms) instead of BQ Load Jobs (15s latency)
-            errors = client.insert_rows_json(table_ref, records)
-
-            if not errors:
-                print(f"[ARCH-A] batch {batch_id} -> {len(records):,} rows written to {bq_table}")
-            else:
-                print(f"[ARCH-A][ERROR] batch {batch_id} failed with {len(errors)} row errors. Sample: {errors[:2]}")
-
+            # Distributed write via workers, bypassing the Driver OOM
+            batch_df.rdd.foreachPartition(process_partition)
+            print(f"[ARCH-A] batch {batch_id} -> distributed write to {bq_table} complete")
         except Exception as exc:
             print(f"[ARCH-A][ERROR] batch {batch_id} crashed: {exc}")
 
@@ -141,6 +152,7 @@ def stream_topic_to_bq(spark: SparkSession, topic: str, bq_table: str):
         raw.writeStream
         .foreachBatch(write_batch)
         .option("checkpointLocation", chk)
+        .trigger(processingTime="5 seconds")
         .start()
     )
 
