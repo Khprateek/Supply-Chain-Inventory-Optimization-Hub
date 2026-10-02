@@ -39,17 +39,7 @@ def worker_produce(worker_id):
     
     print(f"[Worker {worker_id}] Started continuous generation for Sales & Inventory...")
     
-    import signal
-    
-    running = True
-    def _handle_shutdown(sig, frame):
-        nonlocal running
-        running = False
-        
-    signal.signal(signal.SIGTERM, _handle_shutdown)
-    signal.signal(signal.SIGINT, _handle_shutdown)
-    
-    while running:
+    while True:
         event_type_choice = random.choice(["inventory", "sales"])
         
         if event_type_choice == "inventory":
@@ -99,14 +89,8 @@ def worker_produce(worker_id):
             elapsed = time.time() - start_time
             print(f"[Worker {worker_id}] Generated {events_produced:,} combined events so far... (Avg: {events_produced/elapsed:,.0f} msg/sec)")
 
-    # Graceful drain on exit
-    print(f"[Worker {worker_id}] Flushing remaining messages...", flush=True)
-    remaining = producer.flush(timeout=10)   # wait up to 10s for delivery
-    if remaining > 0:
-        print(f"[Worker {worker_id}] WARNING: {remaining} messages not delivered", flush=True)
-
 def main():
-    print(f"Starting Steady, Continuous Kafka Generator...")
+    print(f"🚀 Starting Steady, Continuous Kafka Generator...")
     print(f"Target: Continuous stream to topics 'inventory_events' and 'sales_events'")
     
     # Restrict to only 2 CPU cores to prevent laptop freezing
@@ -125,15 +109,8 @@ def main():
             p.join()
     except KeyboardInterrupt:
         print("\nStopping continuous generation...")
-        import os, signal
         for p in processes:
-            if os.name != 'nt':
-                os.kill(p.pid, signal.SIGTERM)
-        
-        for p in processes:
-            p.join(timeout=12)
-            if p.is_alive():
-                p.terminate()
+            p.terminate()
 
 if __name__ == '__main__':
     main()

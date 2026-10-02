@@ -3,8 +3,15 @@
 with raw as (
     select
         raw_payload,
-        kafka_timestamp
+        kafka_timestamp,
+        row_number() over(
+            partition by JSON_EXTRACT_SCALAR(raw_payload, '$.event_id') 
+            order by kafka_timestamp desc
+        ) as rn
     from {{ source('raw_supply_chain', 'raw_inventory_events') }}
+),
+deduped as (
+    select * from raw where rn = 1
 )
 
 select
@@ -15,4 +22,4 @@ select
     CAST(JSON_EXTRACT_SCALAR(raw_payload, '$.quantity_change') as INT64) as quantity_change,
     JSON_EXTRACT_SCALAR(raw_payload, '$.event_type') as event_type,
     kafka_timestamp
-from raw
+from deduped

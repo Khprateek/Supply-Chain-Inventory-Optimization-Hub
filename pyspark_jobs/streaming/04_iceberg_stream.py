@@ -5,10 +5,6 @@ from pyspark.sql import SparkSession
 from pyspark.sql.functions import from_json, col, current_timestamp
 from pyspark.sql.types import StructType, StructField, StringType, DoubleType, LongType
 
-# Force AWS SDK to see these variables globally
-os.environ["AWS_REGION"] = "us-east-1"
-os.environ["AWS_ACCESS_KEY_ID"] = "test"
-os.environ["AWS_SECRET_ACCESS_KEY"] = "test"
 
 # Setup Spark with Iceberg, Nessie, and Kafka packages
 spark = SparkSession.builder \
@@ -98,8 +94,8 @@ def start_stream(topic, schema, table_name):
         .format("kafka") \
         .option("kafka.bootstrap.servers", "kafka:9092") \
         .option("subscribe", topic) \
-        .option("startingOffsets", "earliest") \
-        .option("failOnDataLoss", "false") \
+        .option("startingOffsets", "latest") \
+        .option("failOnDataLoss", "true") \
         .load()
 
     parsed_df = df.select(
@@ -123,8 +119,15 @@ sales_query = start_stream("sales_events", sales_schema, "sales.streaming_events
 print("✅ Both streams are running! Press Ctrl+C to stop.")
 
 try:
-    spark.streams.awaitAnyTermination()
+    while True:
+        for q in [inv_query, sales_query]:
+            if q.exception():
+                print(f"❌ [CRITICAL] Stream failed: {q.exception()}")
+                inv_query.stop()
+                sales_query.stop()
+                raise q.exception()
+        time.sleep(10)
 except KeyboardInterrupt:
-    print("Stopping streams...")
+    print("Stopping streams gracefully...")
     inv_query.stop()
     sales_query.stop()

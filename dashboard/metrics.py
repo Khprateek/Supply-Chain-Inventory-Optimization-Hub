@@ -1,5 +1,6 @@
 import os
 import time
+import threading
 from fastapi import APIRouter
 from google.cloud import bigquery
 import trino
@@ -20,8 +21,10 @@ TRINO_HOST = "localhost"
 TRINO_PORT = 8080
 TRINO_USER = "admin"
 TRINO_CATALOG = "iceberg"
-TRINO_SCHEMA = "sales"
-TRINO_TABLE = "streaming_events"
+TRINO_SCHEMA_MART = "marts"
+TRINO_TABLE_MART = "fact_sales_summary"
+TRINO_SCHEMA_RAW = "sales"
+TRINO_TABLE_RAW = "streaming_events"
 
 # Keep track of previous counts for speed calculation
 speed_metrics = {
@@ -30,6 +33,7 @@ speed_metrics = {
     "iceberg_rows": 0,
     "iceberg_timestamp": 0
 }
+_speed_metrics_lock = threading.Lock()
 
 @router.get("/metrics/showdown")
 def get_showdown_metrics():
@@ -59,14 +63,14 @@ def get_showdown_metrics():
     try:
         conn = trino.dbapi.connect(
             host=TRINO_HOST, port=TRINO_PORT, user=TRINO_USER,
-            catalog=TRINO_CATALOG, schema=TRINO_SCHEMA,
+            catalog=TRINO_CATALOG, schema=TRINO_SCHEMA_MART,
         )
         query = f"""
         SELECT 
-            SUM(revenue) as total_revenue,
-            SUM(units_sold) as total_units_sold,
-            COUNT(event_id) as total_transactions
-        FROM {TRINO_TABLE}
+            SUM(total_revenue) as total_revenue,
+            SUM(total_units_sold) as total_units_sold,
+            SUM(transaction_count) as total_transactions
+        FROM {TRINO_TABLE_MART}
         """
         cursor = conn.cursor()
         cursor.execute(query)
@@ -85,7 +89,6 @@ def get_showdown_metrics():
 @router.get("/metrics/live")
 def get_live_metrics():
     global speed_metrics
-    current_time = time.time()
     result = {
         "bq": {"total_rows": 0, "rows_per_sec": 0},
         "iceberg": {"total_rows": 0, "rows_per_sec": 0}
@@ -104,12 +107,14 @@ def get_live_metrics():
             current_bq_rows = int(rows[0].total_rows)
             result["bq"]["total_rows"] = current_bq_rows
             
-            dt = current_time - speed_metrics["bq_timestamp"]
-            if dt > 0 and speed_metrics["bq_timestamp"] > 0:
-                result["bq"]["rows_per_sec"] = max(0, int((current_bq_rows - speed_metrics["bq_rows"]) / dt))
-                
-            speed_metrics["bq_rows"] = current_bq_rows
-            speed_metrics["bq_timestamp"] = current_time
+            with _speed_metrics_lock:
+                current_time = time.time()
+                dt = current_time - speed_metrics["bq_timestamp"]
+                if dt > 0 and speed_metrics["bq_timestamp"] > 0:
+                    result["bq"]["rows_per_sec"] = max(0, int((current_bq_rows - speed_metrics["bq_rows"]) / dt))
+                    
+                speed_metrics["bq_rows"] = current_bq_rows
+                speed_metrics["bq_timestamp"] = current_time
     except Exception as e:
         print("BQ Error:", e)
 
@@ -117,21 +122,23 @@ def get_live_metrics():
     try:
         conn = trino.dbapi.connect(
             host=TRINO_HOST, port=TRINO_PORT, user=TRINO_USER,
-            catalog=TRINO_CATALOG, schema=TRINO_SCHEMA,
+            catalog=TRINO_CATALOG, schema=TRINO_SCHEMA_RAW,
         )
         cursor = conn.cursor()
-        cursor.execute(f"SELECT COUNT(*) FROM {TRINO_TABLE}")
+        cursor.execute(f"SELECT COUNT(*) FROM {TRINO_TABLE_RAW}")
         row = cursor.fetchone()
         if row:
             current_ice_rows = int(row[0])
             result["iceberg"]["total_rows"] = current_ice_rows
             
-            dt = current_time - speed_metrics["iceberg_timestamp"]
-            if dt > 0 and speed_metrics["iceberg_timestamp"] > 0:
-                result["iceberg"]["rows_per_sec"] = max(0, int((current_ice_rows - speed_metrics["iceberg_rows"]) / dt))
-                
-            speed_metrics["iceberg_rows"] = current_ice_rows
-            speed_metrics["iceberg_timestamp"] = current_time
+            with _speed_metrics_lock:
+                current_time = time.time()
+                dt = current_time - speed_metrics["iceberg_timestamp"]
+                if dt > 0 and speed_metrics["iceberg_timestamp"] > 0:
+                    result["iceberg"]["rows_per_sec"] = max(0, int((current_ice_rows - speed_metrics["iceberg_rows"]) / dt))
+                    
+                speed_metrics["iceberg_rows"] = current_ice_rows
+                speed_metrics["iceberg_timestamp"] = current_time
     except Exception as e:
         print("Trino Error:", e)
 

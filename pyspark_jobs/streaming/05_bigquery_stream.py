@@ -52,6 +52,9 @@ KAFKA_BROKER = "localhost:29092"
 GCP_PROJECT  = os.environ.get("GCP_PROJECT_ID", "smart-supply-and-inventory")
 BQ_DATASET   = os.environ.get("BQ_DATASET_RAW", "raw_supply_chain")
 
+# Module-level BigQuery client singleton
+_BQ_CLIENT = None
+
 # Checkpoint base — Windows-safe path
 CHECKPOINT_BASE = str(PROJECT_ROOT / "pyspark_jobs" / "streaming" / "checkpoints")
 
@@ -89,8 +92,8 @@ def stream_topic_to_bq(spark: SparkSession, topic: str, bq_table: str):
         .format("kafka")
         .option("kafka.bootstrap.servers", KAFKA_BROKER)
         .option("subscribe", topic)
-        .option("startingOffsets", "earliest")
-        .option("failOnDataLoss", "false")
+        .option("startingOffsets", "latest")
+        .option("failOnDataLoss", "true")
         .load()
         .selectExpr(
             "CAST(value AS STRING) AS raw_payload",
@@ -102,25 +105,37 @@ def stream_topic_to_bq(spark: SparkSession, topic: str, bq_table: str):
         if batch_df.isEmpty():
             return
 
-        # Convert micro-batch to Pandas — fine for development scale
-        pdf = batch_df.toPandas()
+        # Module-level singleton to avoid OAuth/HTTP overhead on every micro-batch
+        global _BQ_CLIENT
+        if '_BQ_CLIENT' not in globals() or _BQ_CLIENT is None:
+            from google.cloud import bigquery as bq
+            _BQ_CLIENT = bq.Client(project=GCP_PROJECT)
+
+        client = _BQ_CLIENT
+        table_ref = f"{GCP_PROJECT}.{BQ_DATASET}.{bq_table}"
 
         try:
-            from google.cloud import bigquery as bq
+            # Convert micro-batch to Pandas
+            pdf = batch_df.toPandas()
+            
+            # Cast datetime columns to string for JSON serialization
+            for col in pdf.select_dtypes(include=['datetime64', 'datetimetz', '<M8[ns]']).columns:
+                pdf[col] = pdf[col].astype(str)
+                
+            records = pdf.to_dict(orient="records")
 
-            client    = bq.Client(project=GCP_PROJECT)
-            table_ref = f"{GCP_PROJECT}.{BQ_DATASET}.{bq_table}"
-            job_cfg   = bq.LoadJobConfig(write_disposition=bq.WriteDisposition.WRITE_APPEND)
-            job       = client.load_table_from_dataframe(pdf, table_ref, job_config=job_cfg)
-            job.result()  # wait for completion
+            # Use low-latency streaming inserts (~10ms) instead of BQ Load Jobs (15s latency)
+            errors = client.insert_rows_json(table_ref, records)
 
-            print(f"[ARCH-A] batch {batch_id} -> {len(pdf):,} rows written to {bq_table}")
+            if not errors:
+                print(f"[ARCH-A] batch {batch_id} -> {len(records):,} rows written to {bq_table}")
+            else:
+                print(f"[ARCH-A][ERROR] batch {batch_id} failed with {len(errors)} row errors. Sample: {errors[:2]}")
 
         except Exception as exc:
-            # Surface the error clearly without crashing the stream
-            print(f"[ARCH-A][ERROR] batch {batch_id} failed: {exc}")
+            print(f"[ARCH-A][ERROR] batch {batch_id} crashed: {exc}")
 
-    chk = os.path.join(CHECKPOINT_BASE, f"bq_{bq_table}")
+    chk = os.path.join(CHECKPOINT_BASE, f"v2_bq_{bq_table}")
 
     query = (
         raw.writeStream
@@ -143,8 +158,16 @@ if __name__ == "__main__":
     print("\n[ARCH-A] Both streams running. Press Ctrl+C to stop.\n")
 
     try:
-        spark.streams.awaitAnyTermination()
+        import time
+        while True:
+            for q in [inv_q, sales_q]:
+                if q.exception():
+                    print(f"\n[ARCH-A][CRITICAL] Stream failed: {q.exception()}")
+                    inv_q.stop()
+                    sales_q.stop()
+                    raise q.exception()
+            time.sleep(10)
     except KeyboardInterrupt:
-        print("\n[ARCH-A] Shutting down streams...")
+        print("\n[ARCH-A] Shutting down streams gracefully...")
         inv_q.stop()
         sales_q.stop()

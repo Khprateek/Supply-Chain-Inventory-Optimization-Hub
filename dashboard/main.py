@@ -1,5 +1,6 @@
 import os
 import subprocess
+import threading
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -26,6 +27,7 @@ app.add_middleware(
 
 # Store running processes
 processes: Dict[str, subprocess.Popen] = {}
+_proc_lock = threading.Lock()
 
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 VENV_PYTHON = os.path.join(PROJECT_ROOT, ".venv", "Scripts", "python.exe")
@@ -49,52 +51,55 @@ def start_process(process_id: str):
     if process_id not in COMMANDS:
         raise HTTPException(status_code=404, detail="Unknown process ID")
     
-    # Check if already running
-    if process_id in processes:
-        proc = processes[process_id]
-        if proc.poll() is None:
-            return {"status": "already_running", "process_id": process_id, "pid": proc.pid}
+    with _proc_lock:
+        # Check if already running
+        if process_id in processes:
+            proc = processes[process_id]
+            if proc.poll() is None:
+                return {"status": "already_running", "process_id": process_id, "pid": proc.pid}
+                
+        try:
+            cmd = COMMANDS[process_id]
             
-    try:
-        cmd = COMMANDS[process_id]
-        
-        # Start the process. We use CREATE_NEW_CONSOLE or CREATE_NEW_PROCESS_GROUP
-        # to ensure it gets its own process tree which we can cleanly taskkill later.
-        creationflags = subprocess.CREATE_NEW_PROCESS_GROUP if os.name == 'nt' else 0
-        
-        proc = subprocess.Popen(
-            cmd, 
-            cwd=PROJECT_ROOT,
-            stdout=subprocess.DEVNULL, # In production we'd stream this to a file
-            stderr=subprocess.DEVNULL,
-            creationflags=creationflags
-        )
-        processes[process_id] = proc
-        return {"status": "started", "process_id": process_id, "pid": proc.pid}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+            # Start the process. We use CREATE_NEW_CONSOLE or CREATE_NEW_PROCESS_GROUP
+            # to ensure it gets its own process tree which we can cleanly taskkill later.
+            creationflags = subprocess.CREATE_NEW_PROCESS_GROUP if os.name == 'nt' else 0
+            
+            proc = subprocess.Popen(
+                cmd, 
+                cwd=PROJECT_ROOT,
+                stdout=subprocess.DEVNULL, # In production we'd stream this to a file
+                stderr=subprocess.DEVNULL,
+                creationflags=creationflags
+            )
+            processes[process_id] = proc
+            return {"status": "started", "process_id": process_id, "pid": proc.pid}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/process/{process_id}/stop")
 def stop_process(process_id: str):
-    if process_id not in processes:
-        return {"status": "not_running"}
-        
-    proc = processes[process_id]
-    if proc.poll() is None:
-        try:
-            kill_process_tree(proc.pid)
-            return {"status": "stopped", "process_id": process_id}
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=str(e))
-    else:
-        return {"status": "already_stopped"}
+    with _proc_lock:
+        if process_id not in processes:
+            return {"status": "not_running"}
+            
+        proc = processes[process_id]
+        if proc.poll() is None:
+            try:
+                kill_process_tree(proc.pid)
+                return {"status": "stopped", "process_id": process_id}
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=str(e))
+        else:
+            return {"status": "already_stopped"}
 
 @app.get("/api/status")
 def get_status():
     status_dict = {}
-    for pid, cmd in COMMANDS.items():
-        if pid in processes and processes[pid].poll() is None:
-            status_dict[pid] = "running"
-        else:
-            status_dict[pid] = "stopped"
+    with _proc_lock:
+        for pid, cmd in COMMANDS.items():
+            if pid in processes and processes[pid].poll() is None:
+                status_dict[pid] = "running"
+            else:
+                status_dict[pid] = "stopped"
     return status_dict

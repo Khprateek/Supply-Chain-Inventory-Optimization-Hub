@@ -18,8 +18,8 @@ TRINO_HOST = "localhost"
 TRINO_PORT = 8080
 TRINO_USER = "admin"
 TRINO_CATALOG = "iceberg"
-TRINO_SCHEMA = "sales"
-TRINO_TABLE = "streaming_events"
+TRINO_SCHEMA = "marts"
+TRINO_TABLE = "fact_sales_summary"
 
 def query_bigquery():
     print(f"[>] Querying Architecture A (BigQuery: {BQ_TABLE})...")
@@ -50,9 +50,9 @@ def query_iceberg():
         )
         query = f"""
         SELECT 
-            SUM(revenue) as total_revenue,
-            SUM(units_sold) as total_units_sold,
-            COUNT(event_id) as total_transactions
+            SUM(total_revenue) as total_revenue,
+            SUM(total_units_sold) as total_units_sold,
+            SUM(transaction_count) as total_transactions
         FROM {TRINO_TABLE}
         """
         df = pd.read_sql(query, conn)
