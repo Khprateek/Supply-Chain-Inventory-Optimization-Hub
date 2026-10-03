@@ -1,11 +1,16 @@
-# Byte-compiled / optimized / DLL files
+# ─────────────────────────────────────────────────────────────────────────────
+# Enterprise Supply Chain Hub — Production .gitignore
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Python byte-compiled / optimized files
 __pycache__/
 *.py[cod]
-*.class
+*$py.class
+*.so
 
 # Virtual environments
-venv/
 .venv/
+venv/
 ENV/
 env/
 
@@ -15,70 +20,48 @@ env/
 *.swp
 *.swo
 
-# Data files (all raw, staging, dimensions, and facts not tracked in Git)
-data/*
-!data/**/
-data/**/[!.]*
-
-# Credentials and secrets
+# Environment configurations & credentials
+.env
+.env.*
+!.env.example
+credentials/
 *credentials*.json
 *service_account*.json
 *.key
 *.pem
-.env
-.env.*
 
-# dbt
+# Data directories and data lake assets
+data/
+spark-warehouse/
+spark-events/
+
+# Spark streaming checkpoints and dependency caches
+**/checkpoints/
+**/.ivy2/
+conf/spark/jars/*.jar
+
+# Java crash logs & runtime error output
+hs_err_pid*.log
+*.err
+*.out
+logs/
+dashboard/logs/*
+!dashboard/logs/.gitkeep
+
+# dbt artifacts
 dbt/target/
 dbt/dbt_packages/
 dbt/logs/
 target/
-logs/
 
-# Power BI
+# Power BI binaries and backups
 *.tmp
 *.pbit.bak
 *.pbix.bak
+*.pbix
 
-# OS generated files
+# Operating system files
+.DS_Store
 Thumbs.db
 ehthumbs.db
 Desktop.ini
-.BIN/
-.DS_Store
-*.pbix
-
-# -- Phase 1: PySpark -------------------------------------------------------
-# BigQuery connector JAR (large binary — download via scripts/download_spark_jars.py)
-conf/spark/jars/*.jar
-
-# Spark event logs and checkpoint directories
-spark-warehouse/
-spark-events/
-checkpoints/
-pyspark_jobs/.ivy2/
-
-# Local .env file with real credentials (NEVER commit)
-.env
-.env.local
-credentials/
-
-
-# Data files
-data/
-DATA_ENGINEERING_AUDIT_v2.md
-# Python
-.venv/
-__pycache__/
-*.py[cod]
-
-# Spark / Ivy
-pyspark_jobs/.ivy2/
-
-# IDE
-.vscode/
-.idea/
-
-# OS
-.DS_Store
-Thumbs.db

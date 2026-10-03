@@ -64,30 +64,32 @@ spark.sql("CREATE NAMESPACE IF NOT EXISTS nessie.inventory")
 spark.sql("CREATE NAMESPACE IF NOT EXISTS nessie.sales")
 
 spark.sql("""
-CREATE TABLE IF NOT EXISTS nessie.inventory.streaming_events (
-    event_id STRING,
-    timestamp DOUBLE,
-    product_id STRING,
-    warehouse_id STRING,
-    quantity_change BIGINT,
-    event_type STRING,
+CREATE TABLE IF NOT EXISTS nessie.inventory.raw_events (
+    kafka_key STRING,
+    raw_payload STRING,
+    topic STRING,
+    partition INT,
+    offset BIGINT,
+    kafka_timestamp TIMESTAMP,
     ingested_at TIMESTAMP
 ) USING iceberg
+PARTITIONED BY (days(ingested_at))
 """)
 
 spark.sql("""
-CREATE TABLE IF NOT EXISTS nessie.sales.streaming_events (
-    event_id STRING,
-    timestamp DOUBLE,
-    product_id STRING,
-    customer_id STRING,
-    revenue DOUBLE,
-    units_sold BIGINT,
+CREATE TABLE IF NOT EXISTS nessie.sales.raw_events (
+    kafka_key STRING,
+    raw_payload STRING,
+    topic STRING,
+    partition INT,
+    offset BIGINT,
+    kafka_timestamp TIMESTAMP,
     ingested_at TIMESTAMP
 ) USING iceberg
+PARTITIONED BY (days(ingested_at))
 """)
 
-def start_stream(topic, schema, table_name):
+def start_stream(topic, table_name):
     print(f"🎧 Listening to Kafka Topic: {topic} -> nessie.{table_name}...")
     
     df = spark.readStream \
@@ -100,35 +102,51 @@ def start_stream(topic, schema, table_name):
         .option("minPartitions", 16) \
         .load()
 
-    parsed_df = df.select(
-        from_json(col("value").cast("string"), schema).alias("data")
-    ).select("data.*")
+    raw_df = df.select(
+        col("key").cast("string").alias("kafka_key"),
+        col("value").cast("string").alias("raw_payload"),
+        col("topic"),
+        col("partition"),
+        col("offset"),
+        col("timestamp").alias("kafka_timestamp"),
+        current_timestamp().alias("ingested_at")
+    )
 
-    enriched_df = parsed_df.withColumn("ingested_at", current_timestamp())
-
-    return enriched_df.writeStream \
+    return raw_df.coalesce(4).writeStream \
         .format("iceberg") \
         .outputMode("append") \
-        .trigger(processingTime="5 seconds") \
+        .trigger(processingTime="1 minute") \
         .option("path", f"nessie.{table_name}") \
         .option("checkpointLocation", f"/opt/spark/work-dir/streaming/checkpoints/v2_iceberg_{table_name.replace('.','_')}_chkpt") \
         .start()
 
 # ── Start Streams ─────────────────────────────────────────────────────────────
-inv_query = start_stream("inventory_events", inventory_schema, "inventory.streaming_events")
-sales_query = start_stream("sales_events", sales_schema, "sales.streaming_events")
+inv_query = start_stream("inventory_events", "inventory.raw_events")
+sales_query = start_stream("sales_events", "sales.raw_events")
 
 print("✅ Both streams are running! Press Ctrl+C to stop.")
 
 try:
+    import json
+    import time
+    metrics_file = "/opt/spark/work-dir/metrics_iceberg.json"
     while True:
-        for q in [inv_query, sales_query]:
+        metrics = {}
+        for q, name in [(inv_query, "inventory"), (sales_query, "sales")]:
             if q.exception():
-                print(f"❌ [CRITICAL] Stream failed: {q.exception()}")
+                print(f"[CRITICAL] Stream failed: {q.exception()}")
                 inv_query.stop()
                 sales_query.stop()
                 raise q.exception()
-        time.sleep(10)
+            if q.lastProgress:
+                metrics[name] = q.lastProgress
+        if metrics:
+            try:
+                with open(metrics_file, "w") as f:
+                    json.dump(metrics, f)
+            except Exception:
+                pass
+        time.sleep(2)
 except KeyboardInterrupt:
     print("Stopping streams gracefully...")
     inv_query.stop()

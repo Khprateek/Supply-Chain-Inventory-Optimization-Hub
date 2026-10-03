@@ -113,7 +113,8 @@ def worker_produce(worker_id):
         if events_produced % 1000 == 0:
             # Yield CPU for 1ms per batch to cap max CPU utilization 
             # while letting librdkafka's internal queues and batching work normally.
-            producer.poll(0.001)
+            producer.poll(0)
+            time.sleep(0.05) # Throttle to reduce local CPU thrashing
             
         if events_produced % 5000 == 0:
             elapsed = time.time() - start_time

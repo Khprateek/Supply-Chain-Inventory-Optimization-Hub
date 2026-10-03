@@ -1,16 +1,18 @@
 import os
 import time
+import json
 import threading
 from fastapi import APIRouter
 from google.cloud import bigquery
 import trino
+from confluent_kafka import Consumer, TopicPartition
 
 router = APIRouter()
 
-# Ensure GCP Auth
+# Paths & GCP Configuration
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sa_key = os.path.join(PROJECT_ROOT, "credentials", "sa_dbt.json")
-if os.path.exists(sa_key):
+if os.path.exists(sa_key) and "GOOGLE_APPLICATION_CREDENTIALS" not in os.environ:
     os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = sa_key
 
 GCP_PROJECT = os.environ.get("GCP_PROJECT_ID", "smart-supply-and-inventory")
@@ -23,8 +25,20 @@ TRINO_USER = "admin"
 TRINO_CATALOG = "iceberg"
 TRINO_SCHEMA_MART = "marts"
 TRINO_TABLE_MART = "fact_sales_summary"
-TRINO_SCHEMA_RAW = "sales"
-TRINO_TABLE_RAW = "raw_events"
+
+# Cached BigQuery client singleton
+_bq_client_lock = threading.Lock()
+_bq_client = None
+
+def get_bq_client():
+    global _bq_client
+    with _bq_client_lock:
+        if _bq_client is None:
+            try:
+                _bq_client = bigquery.Client(project=GCP_PROJECT)
+            except Exception:
+                return None
+        return _bq_client
 
 # Keep track of previous counts for speed calculation
 speed_metrics = {
@@ -35,36 +49,41 @@ speed_metrics = {
 }
 _speed_metrics_lock = threading.Lock()
 
+
 @router.get("/metrics/showdown")
 def get_showdown_metrics():
     result = {"bq": {}, "iceberg": {}}
     
     # 1. BigQuery
     try:
-        client = bigquery.Client(project=GCP_PROJECT)
-        query = f"""
-        SELECT 
-            SUM(total_revenue) as total_revenue,
-            SUM(total_units_sold) as total_units_sold,
-            SUM(total_transactions) as total_transactions
-        FROM `{BQ_TABLE}`
-        """
-        rows = list(client.query(query))
-        if rows:
-            result["bq"] = dict(rows[0].items())
-            # Replace None with 0
-            for k in result["bq"]:
-                if result["bq"][k] is None:
-                    result["bq"][k] = 0
+        client = get_bq_client()
+        if client:
+            query = f"""
+            SELECT 
+                SUM(total_revenue) as total_revenue,
+                SUM(total_units_sold) as total_units_sold,
+                SUM(total_transactions) as total_transactions
+            FROM `{BQ_TABLE}`
+            """
+            rows = list(client.query(query))
+            if rows:
+                result["bq"] = dict(rows[0].items())
+                for k in result["bq"]:
+                    if result["bq"][k] is None:
+                        result["bq"][k] = 0
     except Exception as e:
         result["bq"] = {"error": str(e)}
 
-    # 2. Iceberg (Trino)
+    # 2. Iceberg (Trino) with explicit connection lifecycle
+    conn = None
+    cursor = None
     try:
         conn = trino.dbapi.connect(
             host=TRINO_HOST, port=TRINO_PORT, user=TRINO_USER,
             catalog=TRINO_CATALOG, schema=TRINO_SCHEMA_MART,
+            http_scheme='http'
         )
+        cursor = conn.cursor()
         query = f"""
         SELECT 
             SUM(total_revenue) as total_revenue,
@@ -72,7 +91,6 @@ def get_showdown_metrics():
             SUM(transaction_count) as total_transactions
         FROM {TRINO_TABLE_MART}
         """
-        cursor = conn.cursor()
         cursor.execute(query)
         row = cursor.fetchone()
         if row:
@@ -83,8 +101,16 @@ def get_showdown_metrics():
             }
     except Exception as e:
         result["iceberg"] = {"error": str(e)}
+    finally:
+        if cursor:
+            try: cursor.close()
+            except Exception: pass
+        if conn:
+            try: conn.close()
+            except Exception: pass
         
     return result
+
 
 @router.get("/metrics/live")
 def get_live_metrics():
@@ -96,56 +122,71 @@ def get_live_metrics():
     
     # BigQuery Raw Rows (Metadata fast query)
     try:
-        client = bigquery.Client(project=GCP_PROJECT)
-        query = f"""
-        SELECT sum(row_count) as total_rows 
-        FROM `{GCP_PROJECT}.raw_supply_chain.__TABLES__`
-        WHERE table_id IN ('raw_sales_events', 'raw_inventory_events')
-        """
-        rows = list(client.query(query))
-        if rows and rows[0].total_rows is not None:
-            current_bq_rows = int(rows[0].total_rows)
-            result["bq"]["total_rows"] = current_bq_rows
-            
-            with _speed_metrics_lock:
-                current_time = time.time()
-                dt = current_time - speed_metrics["bq_timestamp"]
-                if dt > 0 and speed_metrics["bq_timestamp"] > 0:
-                    result["bq"]["rows_per_sec"] = max(0, int((current_bq_rows - speed_metrics["bq_rows"]) / dt))
-                    
-                speed_metrics["bq_rows"] = current_bq_rows
-                speed_metrics["bq_timestamp"] = current_time
+        client = get_bq_client()
+        if client:
+            query = f"""
+            SELECT sum(row_count) as total_rows 
+            FROM `{GCP_PROJECT}.raw_supply_chain.__TABLES__`
+            WHERE table_id IN ('raw_sales_events', 'raw_inventory_events')
+            """
+            rows = list(client.query(query))
+            if rows and rows[0].total_rows is not None:
+                current_bq_rows = int(rows[0].total_rows)
+                result["bq"]["total_rows"] = current_bq_rows
+                
+                with _speed_metrics_lock:
+                    current_time = time.time()
+                    dt = current_time - speed_metrics["bq_timestamp"]
+                    if dt > 0 and speed_metrics["bq_timestamp"] > 0:
+                        result["bq"]["rows_per_sec"] = max(0, int((current_bq_rows - speed_metrics["bq_rows"]) / dt))
+                        
+                    speed_metrics["bq_rows"] = current_bq_rows
+                    speed_metrics["bq_timestamp"] = current_time
     except Exception as e:
-        print("BQ Error:", e)
+        pass
 
-    # Iceberg Raw Rows (Trino COUNT(*) is metadata optimized)
+    # Iceberg Raw Rows (Query BOTH sales and inventory raw event tables for a balanced comparison)
+    conn = None
+    cursor = None
     try:
         conn = trino.dbapi.connect(
             host=TRINO_HOST, port=TRINO_PORT, user=TRINO_USER,
-            catalog=TRINO_CATALOG, schema=TRINO_SCHEMA_RAW,
+            catalog=TRINO_CATALOG,
+            http_scheme='http'
         )
         cursor = conn.cursor()
-        cursor.execute(f"SELECT COUNT(*) FROM {TRINO_TABLE_RAW}")
-        row = cursor.fetchone()
-        if row:
-            current_ice_rows = int(row[0])
-            result["iceberg"]["total_rows"] = current_ice_rows
-            
-            with _speed_metrics_lock:
-                current_time = time.time()
-                dt = current_time - speed_metrics["iceberg_timestamp"]
-                if dt > 0 and speed_metrics["iceberg_timestamp"] > 0:
-                    result["iceberg"]["rows_per_sec"] = max(0, int((current_ice_rows - speed_metrics["iceberg_rows"]) / dt))
-                    
-                speed_metrics["iceberg_rows"] = current_ice_rows
-                speed_metrics["iceberg_timestamp"] = current_time
+        total_ice_rows = 0
+        for table_path in ["sales.raw_events", "inventory.raw_events"]:
+            try:
+                cursor.execute(f"SELECT COUNT(*) FROM {table_path}")
+                r = cursor.fetchone()
+                if r and r[0] is not None:
+                    total_ice_rows += int(r[0])
+            except Exception:
+                pass
+
+        result["iceberg"]["total_rows"] = total_ice_rows
+        
+        with _speed_metrics_lock:
+            current_time = time.time()
+            dt = current_time - speed_metrics["iceberg_timestamp"]
+            if dt > 0 and speed_metrics["iceberg_timestamp"] > 0:
+                result["iceberg"]["rows_per_sec"] = max(0, int((total_ice_rows - speed_metrics["iceberg_rows"]) / dt))
+                
+            speed_metrics["iceberg_rows"] = total_ice_rows
+            speed_metrics["iceberg_timestamp"] = current_time
     except Exception as e:
-        print("Trino Error:", e)
+        pass
+    finally:
+        if cursor:
+            try: cursor.close()
+            except Exception: pass
+        if conn:
+            try: conn.close()
+            except Exception: pass
 
     return result
 
-import json
-from confluent_kafka import Consumer, TopicPartition
 
 kafka_metrics_state = {
     "topics": {},
@@ -160,9 +201,16 @@ def get_kafka_metrics():
     dt = current_time - kafka_metrics_state["timestamp"]
     
     result = {"topics": {}, "global_events_sec": 0, "healthy": True}
+    consumer = None
     
     try:
-        consumer = Consumer({"bootstrap.servers": "localhost:29092", "group.id": "dashboard-metric-reader"})
+        consumer = Consumer({
+            "bootstrap.servers": "localhost:29092",
+            "group.id": "dashboard-metric-reader",
+            "enable.auto.commit": False,
+            "auto.offset.reset": "latest",
+            "socket.timeout.ms": 2000
+        })
         total_rate = 0
         for topic in ["sales_events", "inventory_events"]:
             md = consumer.list_topics(topic, timeout=1.5)
@@ -170,13 +218,16 @@ def get_kafka_metrics():
                 t = md.topics[topic]
                 result["topics"][topic] = {"partitions": len(t.partitions), "events_sec": 0, "total_events": 0}
                 
-                # Get high watermarks
+                # Retrieve partition high watermarks without reading payload
                 partitions = [TopicPartition(topic, p) for p in t.partitions]
                 total_high = 0
                 for p in partitions:
-                    low, high = consumer.get_watermark_offsets(p, timeout=1.0)
-                    if high is not None and high > 0:
-                        total_high += high
+                    try:
+                        low, high = consumer.get_watermark_offsets(p, timeout=0.8)
+                        if high is not None and high > 0:
+                            total_high += high
+                    except Exception:
+                        pass
                     
                 result["topics"][topic]["total_events"] = total_high
                 
@@ -196,8 +247,15 @@ def get_kafka_metrics():
     except Exception as e:
         result["healthy"] = False
         result["error"] = str(e)
+    finally:
+        if consumer:
+            try:
+                consumer.close()
+            except Exception:
+                pass
         
     return result
+
 
 @router.get("/metrics/spark")
 def get_spark_metrics():
@@ -206,17 +264,17 @@ def get_spark_metrics():
     bq_path = os.path.join(PROJECT_ROOT, "dashboard", "metrics_bq.json")
     if os.path.exists(bq_path):
         try:
-            with open(bq_path, "r") as f:
+            with open(bq_path, "r", encoding="utf-8") as f:
                 result["bq"] = json.load(f)
-        except:
+        except Exception:
             pass
             
     ice_path = os.path.join(PROJECT_ROOT, "pyspark_jobs", "metrics_iceberg.json")
     if os.path.exists(ice_path):
         try:
-            with open(ice_path, "r") as f:
+            with open(ice_path, "r", encoding="utf-8") as f:
                 result["iceberg"] = json.load(f)
-        except:
+        except Exception:
             pass
             
     return result

@@ -125,20 +125,31 @@ Building this on a local Windows Docker environment required solving several mas
 ## 📂 Project File Structure
 
 ```text
-├── Asset/                        # PowerBI dashboard files & PDFs
-├── dashboard/                    # FastAPI and UI for the control panel
-├── dbt/                          # dbt project for Architecture A
-│   ├── models/                   # dbt SQL models (staging, intermediate, marts)
+├── Asset/                        # PowerBI dashboard templates, reports & PDFs
+├── conf/                         # Spark connector JARs, Winutils & GCP Dataproc configs
+├── credentials/                  # Local service account credentials (gitignored)
+├── dashboard/                    # FastAPI backend and real-time control tower UI
+├── dbt/                          # dbt project for BigQuery Kimball dimensional models
+│   ├── models/                   # dbt SQL models (staging, intermediate, marts, streaming)
 │   └── dbt_project.yml
-├── docker/                       # Docker initialization scripts (Trino, S3, etc.)
-├── docker-compose.yml            # Core infrastructure for the showdown
-├── docs/                         # Extensive project documentation & ADRs
-├── orchestration/                # Airflow DAGs
-├── powerbi/                      # DAX measures and model definitions
-├── pyspark_jobs/                 # PySpark code for architectures
-│   ├── complex_transforms/       # Batch transformation logic
-│   ├── streaming/                # Streaming jobs (Iceberg vs BigQuery)
-│   └── utils/                    # Spark session and logging utilities
-├── scripts/                      # Utility scripts (Kafka generator, setup, etc.)
-└── tests/                        # Data validation and tests
+├── docker/                       # Docker initialization scripts (Trino Iceberg catalog, S3 init)
+├── docker-compose.yml            # Local Kafka, Zookeeper, Spark, Nessie, MinIO, Trino stack
+├── docs/                         # Architecture specifications, PRD, TRD, and ADR records
+├── orchestration/                # Apache Airflow ELT and Dataproc orchestration DAGs
+├── powerbi/                      # DAX measures and semantic model schema definitions
+├── pyspark_jobs/                 # PySpark streaming, batch transformations & utilities
+│   ├── complex_transforms/       # Iceberg batch aggregations
+│   ├── streaming/                # Ingestion & real-time transformation pipelines
+│   └── utils/                    # Centralized SparkSession, logging & config factory
+├── scripts/                      # Operational runners, Kafka producer, setup & cluster tools
+│   ├── kafka_data_generator.py   # Multi-worker continuous synthetic data stream
+│   ├── run_iceberg_stream.cmd    # PySpark streaming runner (Docker)
+│   ├── run_iceberg_transform.cmd # Continuous Iceberg transform runner (Docker)
+│   ├── compare_architectures.py  # Latency & consistency benchmark validator
+│   └── dbt.cmd                   # Portable dbt CLI wrapper
+├── tests/                        # Test suites (Dataset validation, BQ connectivity, connector tests)
+├── dbt.cmd                       # Root convenience shortcut to scripts/dbt.cmd
+├── start_environment.cmd         # One-click local stack & dashboard bootstrap
+├── .env.example                  # Sanitized environment configuration template
+└── requirements.txt              # Production Python dependencies
 ```
