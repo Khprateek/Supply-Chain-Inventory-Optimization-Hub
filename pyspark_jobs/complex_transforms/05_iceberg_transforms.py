@@ -3,7 +3,6 @@ import os
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import col, sum as _sum, count as _count, window, date_trunc
 
-
 # Setup Spark with Iceberg and Nessie
 spark = SparkSession.builder \
     .appName("Iceberg-Batch-Transform") \
@@ -35,62 +34,120 @@ spark = SparkSession.builder \
 spark.sparkContext.setLogLevel("WARN")
 print("✅ Spark Session Created for Iceberg Batch Transforms.")
 
+
 def run_transforms():
-    # 1. Read the raw streaming tables
-    print("📥 Reading raw streaming Iceberg tables...")
+    # 1. Check source tables
+    source_table = None
     try:
-        sales_df = spark.table("nessie.sales.streaming_events")
-        inv_df = spark.table("nessie.inventory.streaming_events")
-    except Exception as e:
-        print(f"❌ Error reading tables (has the stream run yet?): {e}")
+        if spark.table("nessie.sales.structured_events").count() > 0:
+            source_table = "nessie.sales.structured_events"
+        elif spark.table("nessie.sales.raw_events").count() > 0:
+            source_table = "nessie.sales.raw_events"
+    except Exception:
+        pass
+
+    if not source_table:
+        for candidate in ["nessie.sales.structured_events", "nessie.sales.raw_events"]:
+            try:
+                spark.table(candidate)
+                source_table = candidate
+                break
+            except Exception:
+                continue
+
+    if not source_table:
+        print("❌ Source sales tables do not exist yet. Please run run_iceberg_stream.cmd first.")
         return
 
-    # 2. Perform transformations and write using Spark SQL
-    # This avoids the JVM crash associated with the PySpark v2 write API on Java 11.
-    print("⚙️ Processing transformations and writing to nessie.marts.fact_sales_summary...")
-    
+    print(f"📥 Using source table for transform: {source_table}")
+
+    # 2. Ensure schema & target table exist
+    print("⚙️ Ensuring nessie.marts namespace and fact_sales_summary table exist...")
     spark.sql("CREATE NAMESPACE IF NOT EXISTS nessie.marts")
-    
+
     spark.sql("""
     CREATE TABLE IF NOT EXISTS nessie.marts.fact_sales_summary (
+        event_date DATE,
         product_id STRING,
-        sales_date DATE,
         total_revenue DOUBLE,
         total_units_sold BIGINT,
-        transaction_count BIGINT
+        transaction_count BIGINT,
+        avg_order_value DOUBLE
     ) USING iceberg
-    PARTITIONED BY (sales_date)
+    PARTITIONED BY (event_date)
     """)
-    
-    spark.sql("""
-    MERGE INTO nessie.marts.fact_sales_summary t
-    USING (
-        SELECT 
-            product_id, 
-            CAST(ingested_at AS DATE) AS sales_date,
-            SUM(revenue) AS total_revenue,
-            SUM(units_sold) AS total_units_sold,
-            COUNT(event_id) AS transaction_count
-        FROM (
-            SELECT *, row_number() over(partition by event_id order by timestamp desc) as rn
-            FROM nessie.sales.streaming_events
-            WHERE CAST(ingested_at AS DATE) = CURRENT_DATE
-        )
-        WHERE rn = 1
-        GROUP BY 1, 2
-    ) s ON t.product_id = s.product_id AND t.sales_date = s.sales_date
-    WHEN MATCHED THEN UPDATE SET 
-        total_revenue = s.total_revenue,
-        total_units_sold = s.total_units_sold,
-        transaction_count = s.transaction_count
-    WHEN NOT MATCHED THEN INSERT (product_id, sales_date, total_revenue, total_units_sold, transaction_count)
-    VALUES (s.product_id, s.sales_date, s.total_revenue, s.total_units_sold, s.transaction_count)
-    """)
-    
+
+    # 3. Perform deduplication & MERGE INTO
+    if "structured_events" in source_table:
+        spark.sql("""
+        MERGE INTO nessie.marts.fact_sales_summary t
+        USING (
+            SELECT 
+                CAST(timestamp AS DATE) AS event_date,
+                product_id, 
+                ROUND(SUM(revenue), 2) AS total_revenue,
+                SUM(units_sold) AS total_units_sold,
+                COUNT(event_id) AS transaction_count,
+                ROUND(AVG(revenue / NULLIF(units_sold, 0)), 2) AS avg_order_value
+            FROM (
+                SELECT *, row_number() over(partition by event_id order by timestamp desc) as rn
+                FROM nessie.sales.structured_events
+            )
+            WHERE rn = 1
+            GROUP BY 1, 2
+        ) s ON t.product_id = s.product_id AND t.event_date = s.event_date
+        WHEN MATCHED THEN UPDATE SET 
+            total_revenue = s.total_revenue,
+            total_units_sold = s.total_units_sold,
+            transaction_count = s.transaction_count,
+            avg_order_value = s.avg_order_value
+        WHEN NOT MATCHED THEN INSERT (event_date, product_id, total_revenue, total_units_sold, transaction_count, avg_order_value)
+        VALUES (s.event_date, s.product_id, s.total_revenue, s.total_units_sold, s.transaction_count, s.avg_order_value)
+        """)
+    else:
+        # Fallback to direct raw JSON extraction
+        from pyspark.sql.functions import from_json
+        from pyspark.sql.types import StructType, StructField, StringType, DoubleType, LongType
+        raw_schema = StructType([
+            StructField("event_id", StringType(), True),
+            StructField("timestamp", DoubleType(), True),
+            StructField("product_id", StringType(), True),
+            StructField("revenue", DoubleType(), True),
+            StructField("units_sold", LongType(), True)
+        ])
+        df = spark.table("nessie.sales.raw_events")
+        parsed = df.select(from_json(col("raw_payload"), raw_schema).alias("d")).select("d.*")
+        parsed.createOrReplaceTempView("temp_parsed_sales")
+
+        spark.sql("""
+        MERGE INTO nessie.marts.fact_sales_summary t
+        USING (
+            SELECT 
+                CAST(FROM_UNIXTIME(timestamp) AS DATE) AS event_date,
+                product_id, 
+                ROUND(SUM(revenue), 2) AS total_revenue,
+                SUM(units_sold) AS total_units_sold,
+                COUNT(event_id) AS transaction_count,
+                ROUND(AVG(revenue / NULLIF(units_sold, 0)), 2) AS avg_order_value
+            FROM (
+                SELECT *, row_number() over(partition by event_id order by timestamp desc) as rn
+                FROM temp_parsed_sales
+            )
+            WHERE rn = 1
+            GROUP BY 1, 2
+        ) s ON t.product_id = s.product_id AND t.event_date = s.event_date
+        WHEN MATCHED THEN UPDATE SET 
+            total_revenue = s.total_revenue,
+            total_units_sold = s.total_units_sold,
+            transaction_count = s.transaction_count,
+            avg_order_value = s.avg_order_value
+        WHEN NOT MATCHED THEN INSERT (event_date, product_id, total_revenue, total_units_sold, transaction_count, avg_order_value)
+        VALUES (s.event_date, s.product_id, s.total_revenue, s.total_units_sold, s.transaction_count, s.avg_order_value)
+        """)
+
     print("✅ Successfully wrote nessie.marts.fact_sales_summary!")
-    
-    # Show a preview
     spark.sql("SELECT * FROM nessie.marts.fact_sales_summary LIMIT 5").show()
+
 
 if __name__ == "__main__":
     run_transforms()

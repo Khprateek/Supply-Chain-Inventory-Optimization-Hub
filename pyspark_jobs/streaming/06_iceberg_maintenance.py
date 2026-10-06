@@ -38,8 +38,11 @@ def main():
     print("✅ Spark Session Created. Iceberg Nessie Catalog Initialized.")
 
     tables = [
-        "nessie.inventory.streaming_events",
-        "nessie.sales.streaming_events"
+        "nessie.inventory.raw_events",
+        "nessie.sales.raw_events",
+        "nessie.inventory.structured_events",
+        "nessie.sales.structured_events",
+        "nessie.marts.fact_sales_summary",
     ]
     
     for table in tables:

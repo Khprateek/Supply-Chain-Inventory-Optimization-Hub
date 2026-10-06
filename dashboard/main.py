@@ -24,7 +24,7 @@ processes: Dict[str, subprocess.Popen] = {}
 _proc_lock = threading.Lock()
 
 COMMANDS = {
-    "generator": [VENV_PYTHON, os.path.join(PROJECT_ROOT, "scripts", "kafka_data_generator.py"), "--workers", "1"],
+    "generator": [VENV_PYTHON, os.path.join(PROJECT_ROOT, "scripts", "kafka_data_generator.py"), "--workers", "1", "--rate", "100"],
     "stream_iceberg": [os.path.join(PROJECT_ROOT, "scripts", "run_iceberg_stream.cmd")],
     "transform_iceberg": [os.path.join(PROJECT_ROOT, "scripts", "run_iceberg_transform.cmd")],
     "maintenance_iceberg": [os.path.join(PROJECT_ROOT, "scripts", "run_iceberg_maintenance.cmd")],
