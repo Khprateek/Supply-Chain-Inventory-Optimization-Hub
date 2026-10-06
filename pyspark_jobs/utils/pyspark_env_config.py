@@ -1,17 +1,16 @@
 """
 pyspark_env_config.py
 =====================
-Centralised configuration for the PySpark layer of the Enterprise Supply Chain Hub.
-
-Reads from environment variables (or falls back to defaults) so that the same
-code runs locally, on Dataproc, and in Serverless Spark without any code changes.
+Centralised environment configuration for the Open Data Lakehouse platform.
+Reads environment variables (or falls back to defaults) for Kafka, Spark,
+Iceberg, Nessie, MinIO/S3, and Trino.
 
 Usage:
-    from pyspark_jobs.utils.pyspark_env_config import PySpark EnvConfig, get_pyspark_config
+    from pyspark_jobs.utils.pyspark_env_config import LakehouseEnvConfig, get_lakehouse_config
 
-    config = get_pyspark_config()
-    print(config.gcp_project_id)
-    print(config.bq_dataset_marts)
+    config = get_lakehouse_config()
+    print(config.nessie_uri)
+    print(config.s3_endpoint)
 """
 
 import os
@@ -19,93 +18,74 @@ from dataclasses import dataclass, field
 
 
 @dataclass
-class PySparkEnvConfig:
-    """
-    All environment-specific settings the PySpark layer needs.
+class LakehouseEnvConfig:
+    """Configuration settings for the Enterprise Open Data Lakehouse."""
 
-    Every field maps to an environment variable (see get_pyspark_config()).
-    Values can be overridden at runtime — useful for unit tests or CI jobs.
-    """
-
-    # ── Execution environment ─────────────────────────────────────────────────
+    # ── Execution Environment ─────────────────────────────────────────────────
     env: str = "local"
-    """Spark execution environment: 'local' | 'dataproc' | 'serverless'"""
+    """Spark execution environment: 'local' (host) | 'cluster' (Docker Spark)"""
 
-    # ── GCP project ───────────────────────────────────────────────────────────
-    gcp_project_id: str = "supply-chain-analytics-hub"
-    """Google Cloud project that hosts BigQuery, GCS, and Dataproc."""
+    # ── Kafka Streaming Broker ────────────────────────────────────────────────
+    kafka_bootstrap_servers: str = "localhost:29092"
+    """Kafka bootstrap servers for streaming producer and consumer."""
+    kafka_sales_topic: str = "sales_events"
+    kafka_inventory_topic: str = "inventory_events"
 
-    gcp_region: str = "us-central1"
-    """Region for Dataproc cluster and GCS buckets."""
+    # ── Catalog & Metadata (Project Nessie) ───────────────────────────────────
+    nessie_uri: str = "http://localhost:19120/api/v1"
+    """Nessie REST API endpoint for Iceberg catalog metadata."""
+    nessie_ref: str = "main"
+    """Nessie branch reference (e.g., 'main')."""
 
-    # ── GCS buckets ───────────────────────────────────────────────────────────
-    gcs_raw_landing_bucket: str = "sc-analytics-raw-landing"
-    """GCS bucket where raw Parquet files are deposited by the data generation layer."""
+    # ── Storage Layer (S3 / MinIO / LocalStack) ───────────────────────────────
+    s3_endpoint: str = "http://localhost:4566"
+    """S3-compatible object storage endpoint."""
+    s3_warehouse: str = "s3://warehouse"
+    """Root warehouse directory for Iceberg table Parquet files."""
+    aws_access_key_id: str = "test"
+    aws_secret_access_key: str = "test"
+    aws_region: str = "us-east-1"
 
-    gcs_spark_temp_bucket: str = "sc-analytics-spark-temp"
-    """GCS bucket used by the BigQuery connector as a staging area for data export."""
+    # ── Trino Distributed SQL Engine ──────────────────────────────────────────
+    trino_host: str = "localhost"
+    trino_port: int = 8080
+    trino_user: str = "admin"
+    trino_catalog: str = "iceberg"
 
-    gcs_outputs_bucket: str = "sc-analytics-outputs"
-    """GCS bucket for storing Spark job outputs (e.g., processed Parquet files)."""
-
-    # ── BigQuery datasets ─────────────────────────────────────────────────────
-    bq_dataset_raw: str = "raw_supply_chain"
-    """BigQuery dataset containing raw / landing tables."""
-
-    bq_dataset_staging: str = "supply_chain_staging"
-    """BigQuery dataset for dbt staging layer."""
-
-    bq_dataset_marts: str = "supply_chain_marts"
-    """BigQuery dataset for dbt dimensional marts (fact + dimension tables)."""
-
-    bq_dataset_ml: str = "supply_chain_ml"
-    """BigQuery dataset for ML model outputs written by PySpark jobs."""
-
-    bq_dataset_spark_temp: str = "spark_temp"
-    """BigQuery dataset for materialised BigQuery SQL query results (connector requirement)."""
-
-    # ── Dataproc cluster ──────────────────────────────────────────────────────
-    dataproc_cluster_name: str = "sc-hub-spark-cluster"
-    """Name of the Dataproc cluster (used by Airflow DataprocSubmitJobOperator)."""
-
-    # ── Authentication ────────────────────────────────────────────────────────
-    google_application_credentials: str = ""
-    """Path to the GCP service account JSON key file (for local dev only)."""
-
-    # ── Spark tuning overrides ────────────────────────────────────────────────
+    # ── PySpark Tuning ────────────────────────────────────────────────────────
+    spark_driver_memory: str = "4g"
+    spark_executor_memory: str = "4g"
     spark_shuffle_partitions: int = 8
-    """
-    Number of Spark shuffle partitions.
-    Local default: 8 (low, so local mode is fast).
-    Dataproc: overridden to 36 inside spark_session.py.
-    """
-
     extra_spark_conf: dict = field(default_factory=dict)
-    """Any additional spark configuration key-value pairs."""
 
 
-def get_pyspark_config() -> PySparkEnvConfig:
+def get_lakehouse_config() -> LakehouseEnvConfig:
     """
-    Build a PySparkEnvConfig from environment variables.
-
-    Precedence: environment variable → hardcoded default.
-
-    Set these variables in a .env file (for local dev) or in your
-    Dataproc job submission / Airflow Variables (for cloud runs).
+    Build a LakehouseEnvConfig from environment variables.
+    Precedence: environment variable → default value.
     """
-    return PySparkEnvConfig(
+    return LakehouseEnvConfig(
         env=os.getenv("SPARK_ENV", "local"),
-        gcp_project_id=os.getenv("GCP_PROJECT_ID", "supply-chain-analytics-hub"),
-        gcp_region=os.getenv("GCP_REGION", "us-central1"),
-        gcs_raw_landing_bucket=os.getenv("GCS_RAW_LANDING_BUCKET", "sc-analytics-raw-landing"),
-        gcs_spark_temp_bucket=os.getenv("GCS_TEMP_BUCKET", "sc-analytics-spark-temp"),
-        gcs_outputs_bucket=os.getenv("GCS_OUTPUTS_BUCKET", "sc-analytics-outputs"),
-        bq_dataset_raw=os.getenv("BQ_DATASET_RAW", "raw_supply_chain"),
-        bq_dataset_staging=os.getenv("BQ_DATASET_STAGING", "supply_chain_staging"),
-        bq_dataset_marts=os.getenv("BQ_DATASET_MARTS", "supply_chain_marts"),
-        bq_dataset_ml=os.getenv("BQ_DATASET_ML", "supply_chain_ml"),
-        bq_dataset_spark_temp=os.getenv("BQ_DATASET_SPARK_TEMP", "spark_temp"),
-        dataproc_cluster_name=os.getenv("DATAPROC_CLUSTER_NAME", "sc-hub-spark-cluster"),
-        google_application_credentials=os.getenv("GOOGLE_APPLICATION_CREDENTIALS", ""),
+        kafka_bootstrap_servers=os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:29092"),
+        kafka_sales_topic=os.getenv("KAFKA_SALES_TOPIC", "sales_events"),
+        kafka_inventory_topic=os.getenv("KAFKA_INVENTORY_TOPIC", "inventory_events"),
+        nessie_uri=os.getenv("NESSIE_URI", "http://localhost:19120/api/v1"),
+        nessie_ref=os.getenv("NESSIE_REF", "main"),
+        s3_endpoint=os.getenv("S3_ENDPOINT", "http://localhost:4566"),
+        s3_warehouse=os.getenv("S3_WAREHOUSE", "s3://warehouse"),
+        aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID", "test"),
+        aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY", "test"),
+        aws_region=os.getenv("AWS_REGION", "us-east-1"),
+        trino_host=os.getenv("TRINO_HOST", "localhost"),
+        trino_port=int(os.getenv("TRINO_PORT", "8080")),
+        trino_user=os.getenv("TRINO_USER", "admin"),
+        trino_catalog=os.getenv("TRINO_CATALOG", "iceberg"),
+        spark_driver_memory=os.getenv("SPARK_DRIVER_MEMORY", "4g"),
+        spark_executor_memory=os.getenv("SPARK_EXECUTOR_MEMORY", "4g"),
         spark_shuffle_partitions=int(os.getenv("SPARK_SHUFFLE_PARTITIONS", "8")),
     )
+
+
+# Backward-compatibility alias
+PySparkEnvConfig = LakehouseEnvConfig
+get_pyspark_config = get_lakehouse_config

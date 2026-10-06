@@ -1,9 +1,0 @@
-version: 2
-
-sources:
-  - name: raw_supply_chain
-    database: "{{ env_var('GCP_PROJECT_ID', 'smart-supply-and-inventory') }}" 
-    schema: "{{ env_var('BQ_DATASET_RAW', 'raw_supply_chain') }}"
-    tables:
-      - name: raw_sales_events
-      - name: raw_inventory_events

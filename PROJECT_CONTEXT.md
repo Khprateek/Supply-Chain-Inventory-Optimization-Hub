@@ -61,29 +61,21 @@ The data must have realistic relationships, distributions, seasonality, regional
 
 # 3. Core Technology Stack
 
+Data Lakehouse & Streaming Architecture:
+
+* Message Broker: Apache Kafka
+* Distributed Processing: Apache Spark / PySpark Structured Streaming & Batch
+* Lakehouse Table Format: Apache Iceberg v2 (ACID transactions, hidden partitioning)
+* Catalog & Git-like Metadata: Project Nessie (transactional catalog, zero-copy branching)
+* Cloud Object Storage: MinIO / S3 (Snappy/ZSTD compressed Parquet)
+* Distributed SQL Query Engine: Trino (sub-second interactive OLAP)
+* Operations & Control Tower: FastAPI, Uvicorn, Tailwind CSS
+
 Primary BI:
 
 * Microsoft Power BI Desktop
-* Power BI Service concepts where relevant
-* DAX
-* Power Query / M
-
-Warehouse:
-
-Preferred architecture:
-
-* Google BigQuery
-
-Alternative:
-
-* Snowflake
-
-Unless there is a strong technical reason otherwise, use BigQuery.
-
-Transformation:
-
-* SQL
-* dbt where practical
+* Trino Direct / ODBC / REST connector
+* DAX & Semantic Models
 
 Version control:
 
@@ -93,28 +85,28 @@ Version control:
 Development environment:
 
 * Windows
-* VS Code
-* Power BI Desktop
+* VS Code / Antigravity
+* Docker & Docker Compose
 
 ---
 
 # 4. Required Architecture
 
-Use a layered architecture:
+Use a layered Lakehouse architecture:
 
-SOURCE
+STREAMING SOURCE (Python Event Engine)
 ↓
-RAW / LANDING
+MESSAGE BROKER (Apache Kafka)
 ↓
-STAGING
+DISTRIBUTED PROCESSING (PySpark Structured Streaming)
 ↓
-TRANSFORMED / CONFORMED
+LAKEHOUSE STORAGE & CATALOG (Apache Iceberg v2 + Project Nessie on S3)
 ↓
-ANALYTICAL WAREHOUSE
+DIMENSIONAL TRANSFORMATION & MAINTENANCE (PySpark Batch MERGE INTO + Iceberg Compaction)
 ↓
-POWER BI SEMANTIC MODEL
+DISTRIBUTED SERVING (Trino Distributed SQL Engine)
 ↓
-EXECUTIVE / PLANNER REPORTING
+CONTROL TOWER & ANALYTICS (FastAPI Dashboard / Power BI)
 
 The analytical warehouse must follow a disciplined Kimball dimensional-modeling approach.
 

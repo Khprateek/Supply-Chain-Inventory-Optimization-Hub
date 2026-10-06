@@ -1,1098 +1,382 @@
 <!DOCTYPE html>
-
 <html lang="en">
-
 <head>
-
     <meta charset="UTF-8">
-
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-    <title>Supply Chain Optimization Hub - Observability</title>
-
+    <title>Enterprise Open Data Lakehouse - Control Tower</title>
     <script src="https://cdn.tailwindcss.com"></script>
-
     <style>
-
-        body { background-color: #0f172a; color: #f8fafc; font-family: 'Inter', sans-serif; }
-
-        .card { background-color: #1e293b; border: 1px solid #334155; border-radius: 0.5rem; padding: 1rem; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06); }
-
-        .data-flow-line { width: 2px; background: linear-gradient(to bottom, transparent, currentColor 15%, currentColor 85%, transparent); position: relative; }
-
+        body { background-color: #0b1120; color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+        .card { background-color: #131c31; border: 1px solid #1e293b; border-radius: 0.75rem; padding: 1.25rem; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.2); }
+        .data-flow-line { width: 2px; background: linear-gradient(to bottom, transparent, currentColor 20%, currentColor 80%, transparent); position: relative; }
         .data-flow-line::after { content: ''; position: absolute; bottom: 0; left: -4px; border-width: 5px 5px 0; border-style: solid; border-color: currentColor transparent transparent transparent; }
-
-        .pulse-active { animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
-
         .status-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; }
-
-        .status-dot.healthy { background-color: #10b981; box-shadow: 0 0 8px #10b981; }
-
+        .status-dot.healthy { background-color: #10b981; box-shadow: 0 0 10px #10b981; }
         .status-dot.stopped { background-color: #64748b; }
-
-        .status-dot.error { background-color: #ef4444; box-shadow: 0 0 8px #ef4444; }
-
-        
-
-        .metric-label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; color: #94a3b8; }
-
-        .metric-value { font-size: 1.25rem; font-weight: 700; color: #f8fafc; font-family: monospace; }
-
-        
-
-        /* Layout */
-
-        .arch-container { display: flex; flex-direction: column; align-items: center; width: 100%; position: relative; }
-
-        .pipeline-branch { display: flex; flex-direction: column; align-items: center; width: 45%; }
-
-        
-
-        .bg-pattern { background-image: radial-gradient(#334155 1px, transparent 1px); background-size: 20px 20px; }
-
+        .status-dot.error { background-color: #ef4444; box-shadow: 0 0 10px #ef4444; }
+        .metric-label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; color: #94a3b8; font-weight: 600; }
+        .metric-value { font-size: 1.35rem; font-weight: 700; color: #f8fafc; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+        .bg-grid { background-image: radial-gradient(#1e293b 1px, transparent 1px); background-size: 24px 24px; }
+        .glow-cyan { box-shadow: 0 0 20px -5px rgba(6, 182, 212, 0.25); border-color: rgba(6, 182, 212, 0.4); }
+        .glow-purple { box-shadow: 0 0 20px -5px rgba(168, 85, 247, 0.25); border-color: rgba(168, 85, 247, 0.4); }
+        .glow-emerald { box-shadow: 0 0 20px -5px rgba(16, 185, 129, 0.25); border-color: rgba(16, 185, 129, 0.4); }
     </style>
-
 </head>
 
-<body class="p-6 h-screen flex flex-col overflow-hidden bg-pattern">
+<body class="p-6 h-screen flex flex-col overflow-hidden bg-grid">
 
-    <!-- Header -->
-
-    <header class="flex justify-between items-center mb-6 shrink-0 bg-slate-800/80 p-4 rounded-lg border border-slate-700 backdrop-blur-sm">
-
-        <div>
-
-            <h1 class="text-2xl font-bold text-blue-400 flex items-center">
-
-                <svg class="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
-
-                Live Data Flow Observability
-
-            </h1>
-
-            <p class="text-slate-400 text-sm mt-1">Real-time Streaming Architecture Comparison</p>
-
+    <!-- Top Navigation & Header -->
+    <header class="flex justify-between items-center mb-4 shrink-0 bg-slate-900/90 p-4 rounded-xl border border-slate-800 backdrop-blur-md">
+        <div class="flex items-center space-x-4">
+            <div class="h-10 w-10 rounded-lg bg-gradient-to-tr from-cyan-500 to-blue-600 flex items-center justify-center font-bold text-white shadow-lg shadow-cyan-500/20">
+                🧊
+            </div>
+            <div>
+                <h1 class="text-xl font-bold text-white flex items-center tracking-tight">
+                    Enterprise Open Data Lakehouse
+                    <span class="ml-3 px-2 py-0.5 text-xs font-semibold bg-cyan-950 text-cyan-400 border border-cyan-800/60 rounded-full">Architecture B · Production Mode</span>
+                </h1>
+                <p class="text-slate-400 text-xs mt-0.5">Kafka · PySpark Structured Streaming · Apache Iceberg v2 · Project Nessie · MinIO/S3 · Trino</p>
+            </div>
         </div>
 
-            <div class="flex items-center space-x-3">
-                <button onclick="runHealthCheck()" class="px-2.5 py-1 bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-300 border border-indigo-500/40 rounded text-xs font-semibold flex items-center transition">
-                    <svg class="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                    Health Check
-                </button>
-            </div>
-
-            <div class="flex items-center">
+        <div class="flex items-center space-x-4">
+            <button onclick="runHealthCheck()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-cyan-500/30 rounded-lg text-xs font-semibold flex items-center transition shadow-sm">
+                <svg class="w-3.5 h-3.5 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                Health Check
+            </button>
+            <div class="flex items-center bg-slate-950/60 px-3 py-1.5 rounded-lg border border-slate-800">
                 <span id="global-status-dot" class="status-dot healthy"></span>
-                <span id="global-status-text" class="font-semibold text-slate-200">SYSTEM HEALTHY</span>
+                <span id="global-status-text" class="font-semibold text-xs text-slate-200">LAKEHOUSE ONLINE</span>
             </div>
-
-            <div class="text-slate-400 text-xs" id="last-updated">Last updated: just now</div>
-
+            <div class="text-slate-500 text-xs font-mono" id="last-updated">Updating...</div>
+        </div>
     </header>
 
+    <!-- Top KPI Strip -->
+    <div class="grid grid-cols-5 gap-4 mb-4 shrink-0">
+        <div class="card p-3 bg-slate-900/70 border-slate-800 flex flex-col justify-between">
+            <div class="metric-label text-cyan-400">Kafka Production Rate</div>
+            <div class="flex items-baseline justify-between mt-1">
+                <span id="kpi-kafka-rate" class="metric-value text-cyan-300">0</span>
+                <span class="text-xs text-slate-500 font-mono">events/sec</span>
+            </div>
+        </div>
+        <div class="card p-3 bg-slate-900/70 border-slate-800 flex flex-col justify-between">
+            <div class="metric-label text-blue-400">Total Kafka Messages</div>
+            <div class="flex items-baseline justify-between mt-1">
+                <span id="kpi-kafka-total" class="metric-value text-blue-300">0</span>
+                <span class="text-xs text-slate-500 font-mono">events</span>
+            </div>
+        </div>
+        <div class="card p-3 bg-slate-900/70 border-slate-800 flex flex-col justify-between">
+            <div class="metric-label text-purple-400">Iceberg Ingestion Rate</div>
+            <div class="flex items-baseline justify-between mt-1">
+                <span id="kpi-iceberg-rate" class="metric-value text-purple-300">0</span>
+                <span class="text-xs text-slate-500 font-mono">rows/sec</span>
+            </div>
+        </div>
+        <div class="card p-3 bg-slate-900/70 border-slate-800 flex flex-col justify-between">
+            <div class="metric-label text-emerald-400">Iceberg Raw Rows</div>
+            <div class="flex items-baseline justify-between mt-1">
+                <span id="kpi-iceberg-total" class="metric-value text-emerald-300">0</span>
+                <span class="text-xs text-slate-500 font-mono">total rows</span>
+            </div>
+        </div>
+        <div class="card p-3 bg-slate-900/70 border-slate-800 flex flex-col justify-between">
+            <div class="metric-label text-amber-400">Gold Mart Revenue</div>
+            <div class="flex items-baseline justify-between mt-1">
+                <span id="kpi-gold-revenue" class="metric-value text-amber-300">$0.00</span>
+                <span id="kpi-gold-txns" class="text-xs text-slate-500 font-mono">0 txns</span>
+            </div>
+        </div>
+    </div>
 
+    <!-- Main Workspace (Pipeline View + Control Sidecar) -->
+    <div class="flex gap-4 h-full min-h-0 overflow-hidden">
 
-    <div class="flex gap-6 h-full min-h-0 overflow-x-auto">
+        <!-- Architecture Flow Canvas -->
+        <div class="flex-grow bg-slate-900/50 rounded-xl border border-slate-800 overflow-y-auto p-6 relative flex flex-col items-center custom-scrollbar">
 
-        <!-- Main Architecture Landscape (Left/Center) -->
-
-        <div class="flex-grow flex flex-col bg-slate-900/60 rounded-xl border border-slate-700 overflow-y-auto p-8 custom-scrollbar relative min-w-[800px]">
-
-            <div class="arch-container">
-
-                
-
-                <!-- Generator Level -->
-
-                <div class="card w-80 text-center border-blue-500/50 shadow-[0_0_15px_rgba(59,130,246,0.15)] relative z-10">
-
-                    <div class="flex justify-between items-center border-b border-slate-700 pb-2 mb-3">
-
-                        <h3 class="font-bold text-blue-300">Python Event Generator</h3>
-
-                        <span id="status-generator" class="status-dot stopped"></span>
-
+            <!-- STAGE 1: INGESTION -->
+            <div class="w-full max-w-4xl card glow-cyan relative mb-2">
+                <div class="flex justify-between items-center border-b border-slate-800 pb-2 mb-3">
+                    <div class="flex items-center space-x-2">
+                        <span class="text-cyan-400 font-bold text-xs uppercase tracking-wider bg-cyan-950/80 px-2 py-0.5 rounded border border-cyan-800/40">Stage 1</span>
+                        <h3 class="font-bold text-white text-base">Python Event Engine & Apache Kafka Broker</h3>
                     </div>
+                    <div class="flex items-center space-x-2">
+                        <button onclick="viewLogs('generator')" class="px-2 py-1 text-xs text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 rounded border border-slate-700">Logs</button>
+                        <button id="btn-generator" onclick="toggleProcess('generator')" class="px-3 py-1 text-xs font-bold rounded bg-slate-700 hover:bg-slate-600 text-white shadow">START</button>
+                    </div>
+                </div>
 
-                    <div class="grid grid-cols-2 gap-4 text-left">
+                <div class="grid grid-cols-2 gap-4">
+                    <!-- Sales Topic -->
+                    <div class="bg-slate-950/60 p-3 rounded-lg border border-slate-800/80">
+                        <div class="flex justify-between items-center mb-2">
+                            <span class="text-xs font-semibold text-slate-300 font-mono">Topic: sales_events</span>
+                            <span id="topic-sales-badge" class="text-[10px] bg-cyan-950 text-cyan-300 px-1.5 py-0.5 rounded border border-cyan-800/30">16 Partitions</span>
+                        </div>
+                        <div class="grid grid-cols-2 gap-2 text-xs">
+                            <div><div class="metric-label">Throughput</div><div id="kafka-sales-rate" class="metric-value text-base text-cyan-400">0/s</div></div>
+                            <div><div class="metric-label">Total Messages</div><div id="kafka-sales-total" class="metric-value text-base text-slate-300">0</div></div>
+                        </div>
+                    </div>
+                    <!-- Inventory Topic -->
+                    <div class="bg-slate-950/60 p-3 rounded-lg border border-slate-800/80">
+                        <div class="flex justify-between items-center mb-2">
+                            <span class="text-xs font-semibold text-slate-300 font-mono">Topic: inventory_events</span>
+                            <span id="topic-inv-badge" class="text-[10px] bg-cyan-950 text-cyan-300 px-1.5 py-0.5 rounded border border-cyan-800/30">16 Partitions</span>
+                        </div>
+                        <div class="grid grid-cols-2 gap-2 text-xs">
+                            <div><div class="metric-label">Throughput</div><div id="kafka-inv-rate" class="metric-value text-base text-cyan-400">0/s</div></div>
+                            <div><div class="metric-label">Total Messages</div><div id="kafka-inv-total" class="metric-value text-base text-slate-300">0</div></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
 
+            <!-- Down Arrow 1 -->
+            <div class="flex flex-col items-center text-cyan-500 h-8 w-full my-1">
+                <div class="data-flow-line h-full w-0.5"></div>
+            </div>
+
+            <!-- STAGE 2: LAKEHOUSE STREAMING & STORAGE -->
+            <div class="w-full max-w-4xl card glow-purple relative mb-2">
+                <div class="flex justify-between items-center border-b border-slate-800 pb-2 mb-3">
+                    <div class="flex items-center space-x-2">
+                        <span class="text-purple-400 font-bold text-xs uppercase tracking-wider bg-purple-950/80 px-2 py-0.5 rounded border border-purple-800/40">Stage 2</span>
+                        <h3 class="font-bold text-white text-base">PySpark Structured Streaming & Apache Iceberg v2</h3>
+                    </div>
+                    <div class="flex items-center space-x-2">
+                        <button onclick="viewLogs('stream_iceberg')" class="px-2 py-1 text-xs text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 rounded border border-slate-700">Logs</button>
+                        <button id="btn-stream_iceberg" onclick="toggleProcess('stream_iceberg')" class="px-3 py-1 text-xs font-bold rounded bg-slate-700 hover:bg-slate-600 text-white shadow">START</button>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-3 gap-4">
+                    <!-- Stream Engine Details -->
+                    <div class="bg-slate-950/60 p-3 rounded-lg border border-slate-800/80">
+                        <div class="metric-label text-purple-400 mb-1">Execution Engine</div>
+                        <div class="text-xs text-slate-300 font-mono">Spark 3.5.x on Scala 2.12</div>
+                        <div class="text-[11px] text-slate-500 mt-1">5s Micro-batch · S3 WAL Checkpoint</div>
+                        <div class="mt-2 pt-2 border-t border-slate-800 flex justify-between items-center">
+                            <span class="text-[11px] text-slate-400">Backpressure Limit</span>
+                            <span class="text-xs font-mono text-purple-300">50K offsets/trig</span>
+                        </div>
+                    </div>
+                    <!-- Catalog Details -->
+                    <div class="bg-slate-950/60 p-3 rounded-lg border border-slate-800/80">
+                        <div class="metric-label text-purple-400 mb-1">Catalog & Metadata</div>
+                        <div class="text-xs text-slate-300 font-mono">Project Nessie (Git for Data)</div>
+                        <div class="text-[11px] text-slate-500 mt-1">Branch: <span class="text-cyan-400 font-semibold">main</span> · REST v1/v2</div>
+                        <div class="mt-2 pt-2 border-t border-slate-800 flex justify-between items-center">
+                            <span class="text-[11px] text-slate-400">Snapshot Isolation</span>
+                            <span class="text-xs font-mono text-emerald-400">ACID v2 Enabled</span>
+                        </div>
+                    </div>
+                    <!-- Table Raw Stats -->
+                    <div class="bg-slate-950/60 p-3 rounded-lg border border-slate-800/80">
+                        <div class="metric-label text-purple-400 mb-1">Iceberg Raw Tables</div>
+                        <div class="flex justify-between items-center text-xs py-0.5">
+                            <span class="text-slate-400 font-mono">sales.raw_events:</span>
+                            <span id="iceberg-sales-rows" class="font-mono text-slate-200">0 rows</span>
+                        </div>
+                        <div class="flex justify-between items-center text-xs py-0.5">
+                            <span class="text-slate-400 font-mono">inventory.raw_events:</span>
+                            <span id="iceberg-inv-rows" class="font-mono text-slate-200">0 rows</span>
+                        </div>
+                        <div class="mt-2 pt-2 border-t border-slate-800 flex justify-between items-center">
+                            <span class="text-[11px] text-slate-400">Storage Format</span>
+                            <span class="text-xs font-mono text-purple-300">Parquet + S3FileIO</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Down Arrow 2 -->
+            <div class="flex flex-col items-center text-purple-500 h-8 w-full my-1">
+                <div class="data-flow-line h-full w-0.5"></div>
+            </div>
+
+            <!-- STAGE 3: TRANSFORMATION & SERVING -->
+            <div class="w-full max-w-4xl card glow-emerald relative">
+                <div class="flex justify-between items-center border-b border-slate-800 pb-2 mb-3">
+                    <div class="flex items-center space-x-2">
+                        <span class="text-emerald-400 font-bold text-xs uppercase tracking-wider bg-emerald-950/80 px-2 py-0.5 rounded border border-emerald-800/40">Stage 3</span>
+                        <h3 class="font-bold text-white text-base">PySpark Dimensional Marts & Trino Distributed SQL</h3>
+                    </div>
+                    <div class="flex items-center space-x-2">
+                        <button onclick="viewLogs('transform_iceberg')" class="px-2 py-1 text-xs text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 rounded border border-slate-700">Transform Logs</button>
+                        <button id="btn-transform_iceberg" onclick="toggleProcess('transform_iceberg')" class="px-3 py-1 text-xs font-bold rounded bg-slate-700 hover:bg-slate-600 text-white shadow">TRANSFORM</button>
+                        <button onclick="viewLogs('maintenance_iceberg')" class="px-2 py-1 text-xs text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 rounded border border-slate-700">Maint Logs</button>
+                        <button id="btn-maintenance_iceberg" onclick="toggleProcess('maintenance_iceberg')" class="px-3 py-1 text-xs font-bold rounded bg-slate-700 hover:bg-slate-600 text-white shadow">COMPACT</button>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-3 gap-4">
+                    <!-- Mart Information -->
+                    <div class="bg-slate-950/60 p-3 rounded-lg border border-slate-800/80">
+                        <div class="metric-label text-emerald-400 mb-1">Gold Serving Mart</div>
+                        <div class="text-xs text-slate-300 font-mono">marts.fact_sales_summary</div>
+                        <div class="text-[11px] text-slate-500 mt-1">Deduplication + MERGE INTO Aggregation</div>
+                        <div class="mt-2 pt-2 border-t border-slate-800 flex justify-between items-center">
+                            <span class="text-[11px] text-slate-400">File Optimization</span>
+                            <span class="text-xs font-mono text-emerald-400">Bin-Pack Compacted</span>
+                        </div>
+                    </div>
+                    <!-- Serving Engine -->
+                    <div class="bg-slate-950/60 p-3 rounded-lg border border-slate-800/80">
+                        <div class="metric-label text-emerald-400 mb-1">Serving Engine</div>
+                        <div class="text-xs text-slate-300 font-mono">Trino Distributed SQL</div>
+                        <div class="text-[11px] text-slate-500 mt-1">Catalog: <span class="text-cyan-400 font-mono">iceberg</span> (port 8080)</div>
+                        <div class="mt-2 pt-2 border-t border-slate-800 flex justify-between items-center">
+                            <span class="text-[11px] text-slate-400">Query Latency</span>
+                            <span class="text-xs font-mono text-emerald-400">&lt; 0.45s OLAP</span>
+                        </div>
+                    </div>
+                    <!-- Live Analytics Query -->
+                    <div class="bg-slate-950/60 p-3 rounded-lg border border-slate-800/80 flex flex-col justify-between">
                         <div>
-
-                            <div class="metric-label">Events/sec</div>
-
-                            <div id="gen-rate" class="metric-value text-blue-400">0</div>
-
+                            <div class="flex justify-between items-center">
+                                <div class="metric-label text-emerald-400">Live Trino Analytics</div>
+                                <button onclick="fetchShowdown()" class="text-[10px] text-cyan-400 hover:underline">Query Now</button>
+                            </div>
+                            <div id="mart-revenue" class="text-base font-bold text-amber-300 font-mono mt-1">$0.00</div>
+                            <div class="text-[11px] text-slate-400 mt-0.5">
+                                <span id="mart-units">0</span> units · <span id="mart-txns">0</span> orders
+                            </div>
                         </div>
-
-                        <div>
-
-                            <div class="metric-label">Total Events</div>
-
-                            <div id="gen-total" class="metric-value">0</div>
-
+                        <div class="mt-2 pt-1 border-t border-slate-800 text-[10px] text-slate-500 font-mono">
+                            Zero-copy Iceberg metadata reads
                         </div>
-
                     </div>
-
                 </div>
-
-
-
-                <!-- Down Arrow -->
-
-                <div class="flex flex-col items-center text-blue-500 h-12 w-full my-2">
-
-                    <div class="data-flow-line h-full w-0.5" id="flow-gen-kafka"></div>
-
-                </div>
-
-
-
-                <!-- Kafka Level -->
-
-                <div class="card w-full max-w-4xl border-slate-500/50 relative z-10 bg-slate-800/90">
-
-                    <div class="flex justify-between items-center border-b border-slate-700 pb-2 mb-4">
-
-                        <h3 class="font-bold text-lg text-slate-200 flex items-center">
-
-                            <svg class="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
-
-                            Apache Kafka Cluster
-
-                        </h3>
-
-                        <div id="kafka-conn-status" class="text-xs font-bold px-2 py-1 bg-green-500/20 text-green-400 rounded">HEALTHY</div>
-
-                    </div>
-
-                    
-
-                    <div class="grid grid-cols-2 gap-8">
-
-                        <!-- Sales Topic -->
-
-                        <div class="bg-slate-900/50 p-4 rounded-lg border border-slate-700">
-
-                            <h4 class="text-slate-300 font-semibold text-sm mb-3">Topic: <span class="text-blue-300 font-mono">sales_events</span></h4>
-
-                            <div class="grid grid-cols-2 gap-3">
-
-                                <div><div class="metric-label">Partitions</div><div id="kafka-sales-parts" class="text-lg font-mono">N/A</div></div>
-
-                                <div><div class="metric-label">Events/sec</div><div id="kafka-sales-rate" class="text-lg font-mono text-green-400">0</div></div>
-
-                                <div><div class="metric-label">Total Msgs</div><div id="kafka-sales-total" class="text-lg font-mono text-slate-400">0</div></div>
-
-                                <div><div class="metric-label">Lag</div><div id="kafka-sales-lag" class="text-lg font-mono text-yellow-500">N/A</div></div>
-
-                            </div>
-
-                        </div>
-
-                        <!-- Inventory Topic -->
-
-                        <div class="bg-slate-900/50 p-4 rounded-lg border border-slate-700">
-
-                            <h4 class="text-slate-300 font-semibold text-sm mb-3">Topic: <span class="text-blue-300 font-mono">inventory_events</span></h4>
-
-                            <div class="grid grid-cols-2 gap-3">
-
-                                <div><div class="metric-label">Partitions</div><div id="kafka-inv-parts" class="text-lg font-mono">N/A</div></div>
-
-                                <div><div class="metric-label">Events/sec</div><div id="kafka-inv-rate" class="text-lg font-mono text-green-400">0</div></div>
-
-                                <div><div class="metric-label">Total Msgs</div><div id="kafka-inv-total" class="text-lg font-mono text-slate-400">0</div></div>
-
-                                <div><div class="metric-label">Lag</div><div id="kafka-inv-lag" class="text-lg font-mono text-yellow-500">N/A</div></div>
-
-                            </div>
-
-                        </div>
-
-                    </div>
-
-                </div>
-
-
-
-                <!-- Forking Arrows -->
-
-                <div class="flex w-full max-w-4xl justify-around h-16 my-2 relative">
-
-                    <!-- Path A connecting lines -->
-
-                    <div class="absolute left-1/4 top-0 bottom-0 flex flex-col items-center w-full max-w-[2px] text-green-500">
-
-                        <div class="data-flow-line h-full w-0.5" id="flow-kafka-bqa"></div>
-
-                    </div>
-
-                    <!-- Path B connecting lines -->
-
-                    <div class="absolute right-1/4 top-0 bottom-0 flex flex-col items-center w-full max-w-[2px] text-purple-500">
-
-                        <div class="data-flow-line h-full w-0.5" id="flow-kafka-iceb"></div>
-
-                    </div>
-
-                </div>
-
-
-
-                <!-- Architectures in Parallel -->
-
-                <div class="flex w-full max-w-5xl justify-between gap-12 relative z-10">
-
-                    
-
-                    <!-- Arch A: BigQuery -->
-
-                    <div class="pipeline-branch">
-
-                        <div class="w-full text-center mb-2"><span class="px-3 py-1 bg-green-500/10 text-green-400 border border-green-500/30 rounded-full text-xs font-bold tracking-wider">ARCHITECTURE A (BIGQUERY)</span></div>
-
-                        
-
-                        <!-- Spark BQ -->
-
-                        <div class="card w-full border-green-500/50 shadow-[0_0_15px_rgba(34,197,94,0.1)]">
-
-                            <div class="flex justify-between items-center border-b border-slate-700 pb-2 mb-3">
-
-                                <h3 class="font-bold text-green-400">PySpark Streaming <span class="ml-2 px-2 py-0.5 bg-green-500/20 text-green-300 text-[10px] rounded border border-green-500/30 uppercase tracking-wide">In-Memory Parsing</span></h3>
-
-                                <span id="status-stream_bq" class="status-dot stopped"></span>
-
-                            </div>
-
-                            <div class="grid grid-cols-2 gap-y-3 gap-x-2 text-left">
-
-                                <div><div class="metric-label">Input Rate</div><div id="spark-bq-in" class="metric-value">0<span class="text-xs text-slate-500 font-normal">/s</span></div></div>
-
-                                <div><div class="metric-label">Proc Rate</div><div id="spark-bq-proc" class="metric-value text-green-400">0<span class="text-xs text-slate-500 font-normal">/s</span></div></div>
-
-                                <div><div class="metric-label">Batch Duration</div><div id="spark-bq-batch" class="text-sm font-mono text-slate-300">0s</div></div>
-
-                                <div><div class="metric-label">Active Query</div><div id="spark-bq-active" class="text-sm font-mono text-slate-300">N/A</div></div>
-
-                            </div>
-
-                        </div>
-
-
-
-                        <!-- Down Arrow -->
-
-                        <div class="flex flex-col items-center text-green-500 h-10 w-full my-2">
-
-                            <div class="data-flow-line h-full w-0.5" id="flow-bq-storage"></div>
-
-                        </div>
-
-
-
-                        <!-- BigQuery Storage -->
-
-                        <div class="card w-full border-green-700/50">
-
-                            <div class="flex items-center mb-3">
-
-                                <div class="p-2 bg-green-500/20 rounded mr-3 text-green-400">
-
-                                    <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z"/></svg>
-
-                                </div>
-
-                                <h3 class="font-bold text-slate-200">BigQuery Structured Storage</h3>
-
-                            </div>
-
-                            <div class="grid grid-cols-2 gap-3 text-left bg-slate-900/50 p-3 rounded">
-
-                                <div><div class="metric-label">Rows Ingested</div><div id="bq-total-rows" class="text-xl font-mono text-white">0</div></div>
-
-                                <div><div class="metric-label">Ingestion Rate</div><div id="bq-ingest-rate" class="text-xl font-mono text-green-400">0</div></div>
-
-                            </div>
-
-                        </div>
-
-
-
-                        <!-- Down Arrow (dbt) -->
-
-                        <div class="flex flex-col items-center text-slate-500 h-10 w-full my-2 relative">
-
-                            <div class="data-flow-line h-full w-0.5 border-dashed"></div>
-
-                            <span class="absolute top-1/2 -translate-y-1/2 bg-slate-900 px-2 text-xs font-mono text-blue-400 border border-blue-500/30 rounded">dbt run</span>
-
-                        </div>
-
-
-
-                        <!-- BigQuery Mart -->
-
-                        <div class="card w-full border-slate-700 opacity-80">
-
-                            <h3 class="font-bold text-slate-400 text-sm mb-1 text-center">BigQuery Mart (fct_stream_sales_summary)</h3>
-
-                        </div>
-
-                    </div>
-
-
-
-                    <!-- Arch B: Iceberg -->
-
-                    <div class="pipeline-branch">
-
-                        <div class="w-full text-center mb-2"><span class="px-3 py-1 bg-purple-500/10 text-purple-400 border border-purple-500/30 rounded-full text-xs font-bold tracking-wider">ARCHITECTURE B (ICEBERG)</span></div>
-
-                        
-
-                        <!-- Spark Iceberg -->
-
-                        <div class="card w-full border-purple-500/50 shadow-[0_0_15px_rgba(168,85,247,0.1)]">
-
-                            <div class="flex justify-between items-center border-b border-slate-700 pb-2 mb-3">
-
-                                <h3 class="font-bold text-purple-400">PySpark Streaming <span class="ml-2 px-2 py-0.5 bg-purple-500/20 text-purple-300 text-[10px] rounded border border-purple-500/30 uppercase tracking-wide">Raw Dumb Pipe</span></h3>
-
-                                <span id="status-stream_iceberg" class="status-dot stopped"></span>
-
-                            </div>
-
-                            <div class="grid grid-cols-2 gap-y-3 gap-x-2 text-left">
-
-                                <div><div class="metric-label">Input Rate</div><div id="spark-ice-in" class="metric-value">0<span class="text-xs text-slate-500 font-normal">/s</span></div></div>
-
-                                <div><div class="metric-label">Proc Rate</div><div id="spark-ice-proc" class="metric-value text-purple-400">0<span class="text-xs text-slate-500 font-normal">/s</span></div></div>
-
-                                <div><div class="metric-label">Batch Duration</div><div id="spark-ice-batch" class="text-sm font-mono text-slate-300">0s</div></div>
-
-                                <div><div class="metric-label">Active Query</div><div id="spark-ice-active" class="text-sm font-mono text-slate-300">N/A</div></div>
-
-                            </div>
-
-                        </div>
-
-
-
-                        <!-- Down Arrow -->
-
-                        <div class="flex flex-col items-center text-purple-500 h-10 w-full my-2">
-
-                            <div class="data-flow-line h-full w-0.5" id="flow-ice-storage"></div>
-
-                        </div>
-
-
-
-                        <!-- Iceberg Storage -->
-
-                        <div class="card w-full border-purple-700/50">
-
-                            <div class="flex items-center mb-3">
-
-                                <div class="p-2 bg-purple-500/20 rounded mr-3 text-purple-400"><svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.36 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM14 13v4h-4v-4H7l5-5 5 5h-3z"/></svg></div>
-
-                                <h3 class="font-bold text-slate-200">Iceberg Raw (Nessie + MinIO)</h3>
-
-                            </div>
-
-                            <div class="grid grid-cols-2 gap-3 text-left bg-slate-900/50 p-3 rounded">
-
-                                <div><div class="metric-label">Rows Written</div><div id="iceberg-total-rows" class="text-xl font-mono text-white">0</div></div>
-
-                                <div><div class="metric-label">Write Rate</div><div id="iceberg-ingest-rate" class="text-xl font-mono text-purple-400">0</div></div>
-
-                            </div>
-
-                        </div>
-
-
-
-                        <!-- Down Arrow -->
-
-                        <div class="flex flex-col items-center text-purple-500 h-10 w-full my-2 relative">
-
-                            <div class="data-flow-line h-full w-0.5 border-dashed" id="flow-ice-transform"></div>
-
-                            <span class="absolute top-1/2 -translate-y-1/2 bg-slate-900 px-2 text-xs font-mono text-purple-400 border border-purple-500/30 rounded">batch transform</span>
-
-                        </div>
-
-                        
-
-                        <!-- Arch B Transform -->
-
-                        <div class="card w-full border-purple-500/50 shadow-[0_0_15px_rgba(168,85,247,0.1)] mb-2">
-
-                            <div class="flex justify-between items-center border-b border-slate-700 pb-2 mb-3">
-
-                                <h3 class="font-bold text-purple-400">PySpark Batch Compute <span class="ml-2 px-2 py-0.5 bg-purple-500/20 text-purple-300 text-[10px] rounded border border-purple-500/30 uppercase tracking-wide">JSON Parsing</span></h3>
-
-                                <span id="status-transform_iceberg" class="status-dot stopped"></span>
-
-                            </div>
-
-                        </div>
-
-
-
-                        <!-- Down Arrow -->
-
-                        <div class="flex flex-col items-center text-purple-500 h-6 w-full my-1">
-
-                            <div class="data-flow-line h-full w-0.5"></div>
-
-                        </div>
-
-
-
-                        <!-- Iceberg Mart Storage -->
-
-                        <div class="card w-full border-purple-700/50">
-
-                            <div class="flex items-center">
-
-                                <h3 class="font-bold text-slate-200">Iceberg Structured Mart</h3>
-
-                            </div>
-
-                        </div>
-
-                    </div>
-
-
-
-                </div>
-
             </div>
 
         </div>
 
-
-
-        <!-- Right Side: Control Flow & Showdown -->
-
+        <!-- Right Sidecar: Operations & Quick Actions -->
         <div class="w-80 shrink-0 flex flex-col space-y-4">
 
-            
-
-            <!-- Process Controls -->
-
-            <div class="card bg-slate-800/80 border-slate-600">
-
-                <h2 class="text-sm uppercase tracking-wider font-bold text-slate-400 mb-4 border-b border-slate-700 pb-2">Control Flow</h2>
+            <!-- Operations Control Box -->
+            <div class="card bg-slate-900/80 border-slate-800">
+                <div class="flex justify-between items-center border-b border-slate-800 pb-2 mb-3">
+                    <h3 class="font-bold text-sm text-slate-200 uppercase tracking-wider">Pipeline Operations</h3>
+                    <span class="text-[10px] text-cyan-400 font-mono">Autonomous</span>
+                </div>
 
                 <div class="space-y-3">
-                    <div class="flex items-center justify-between">
-                        <div><div class="text-sm font-semibold text-slate-200">Event Generator</div></div>
-                        <div class="flex items-center space-x-1.5">
-                            <button onclick="viewLogs('generator')" class="px-2 py-1 text-xs text-slate-400 hover:text-slate-200 bg-slate-700/60 hover:bg-slate-700 rounded transition" title="View Console Logs">Logs</button>
-                            <button id="btn-generator" onclick="toggleProcess('generator')" class="px-3 py-1 text-xs font-bold rounded bg-slate-600 hover:bg-slate-500 text-white w-20 shadow">START</button>
+                    <div class="flex justify-between items-center p-2 bg-slate-950/40 rounded border border-slate-800">
+                        <div>
+                            <div class="text-xs font-semibold text-slate-200">1. Data Generator</div>
+                            <div class="text-[10px] text-slate-400" id="op-status-generator">Stopped</div>
                         </div>
+                        <button id="op-btn-generator" onclick="toggleProcess('generator')" class="px-2.5 py-1 text-xs font-bold rounded bg-slate-700 text-white">START</button>
                     </div>
 
-                    <div class="flex items-center justify-between">
-                        <div><div class="text-sm font-semibold text-slate-200">Arch A Stream</div><div class="text-xs text-slate-500">PySpark to BQ</div></div>
-                        <div class="flex items-center space-x-1.5">
-                            <button onclick="viewLogs('stream_bq')" class="px-2 py-1 text-xs text-slate-400 hover:text-slate-200 bg-slate-700/60 hover:bg-slate-700 rounded transition" title="View Console Logs">Logs</button>
-                            <button id="btn-stream_bq" onclick="toggleProcess('stream_bq')" class="px-3 py-1 text-xs font-bold rounded bg-slate-600 hover:bg-slate-500 text-white w-20 shadow">START</button>
+                    <div class="flex justify-between items-center p-2 bg-slate-950/40 rounded border border-slate-800">
+                        <div>
+                            <div class="text-xs font-semibold text-slate-200">2. Iceberg Ingest Stream</div>
+                            <div class="text-[10px] text-slate-400" id="op-status-stream_iceberg">Stopped</div>
                         </div>
+                        <button id="op-btn-stream_iceberg" onclick="toggleProcess('stream_iceberg')" class="px-2.5 py-1 text-xs font-bold rounded bg-slate-700 text-white">START</button>
                     </div>
 
-                    <div class="flex items-center justify-between">
-                        <div><div class="text-sm font-semibold text-slate-200">Arch B Stream</div><div class="text-xs text-slate-500">PySpark to Iceberg</div></div>
-                        <div class="flex items-center space-x-1.5">
-                            <button onclick="viewLogs('stream_iceberg')" class="px-2 py-1 text-xs text-slate-400 hover:text-slate-200 bg-slate-700/60 hover:bg-slate-700 rounded transition" title="View Console Logs">Logs</button>
-                            <button id="btn-stream_iceberg" onclick="toggleProcess('stream_iceberg')" class="px-3 py-1 text-xs font-bold rounded bg-slate-600 hover:bg-slate-500 text-white w-20 shadow">START</button>
+                    <div class="flex justify-between items-center p-2 bg-slate-950/40 rounded border border-slate-800">
+                        <div>
+                            <div class="text-xs font-semibold text-slate-200">3. Continuous Transform</div>
+                            <div class="text-[10px] text-slate-400" id="op-status-transform_iceberg">Stopped</div>
                         </div>
+                        <button id="op-btn-transform_iceberg" onclick="toggleProcess('transform_iceberg')" class="px-2.5 py-1 text-xs font-bold rounded bg-slate-700 text-white">START</button>
                     </div>
 
-                    <div class="flex items-center justify-between pt-2 border-t border-slate-700/50 mt-2">
-                        <div><div class="text-sm font-semibold text-blue-300">Arch A Transform</div><div class="text-xs text-slate-500">dbt run</div></div>
-                        <div class="flex items-center space-x-1.5">
-                            <button onclick="viewLogs('dbt_run')" class="px-2 py-1 text-xs text-slate-400 hover:text-slate-200 bg-slate-700/60 hover:bg-slate-700 rounded transition" title="View Console Logs">Logs</button>
-                            <button id="btn-dbt_run" onclick="toggleProcess('dbt_run')" class="px-3 py-1 text-xs font-bold rounded bg-blue-600 hover:bg-blue-500 text-white w-20 shadow">RUN</button>
+                    <div class="flex justify-between items-center p-2 bg-slate-950/40 rounded border border-slate-800">
+                        <div>
+                            <div class="text-xs font-semibold text-slate-200">4. Table Compaction</div>
+                            <div class="text-[10px] text-slate-400" id="op-status-maintenance_iceberg">Ready</div>
                         </div>
-                    </div>
-
-                    <div class="flex items-center justify-between pt-2 border-t border-slate-700/50 mt-2">
-                        <div><div class="text-sm font-semibold text-purple-300">Arch B Transform</div><div class="text-xs text-slate-500">PySpark JSON Parse</div></div>
-                        <div class="flex items-center space-x-1.5">
-                            <button onclick="viewLogs('transform_iceberg')" class="px-2 py-1 text-xs text-slate-400 hover:text-slate-200 bg-slate-700/60 hover:bg-slate-700 rounded transition" title="View Console Logs">Logs</button>
-                            <button id="btn-transform_iceberg" onclick="toggleProcess('transform_iceberg')" class="px-3 py-1 text-xs font-bold rounded bg-purple-600 hover:bg-purple-500 text-white w-20 shadow">RUN</button>
-                        </div>
+                        <button id="op-btn-maintenance_iceberg" onclick="toggleProcess('maintenance_iceberg')" class="px-2.5 py-1 text-xs font-bold rounded bg-slate-700 text-white">RUN</button>
                     </div>
                 </div>
 
+                <div class="mt-4 pt-3 border-t border-slate-800 flex gap-2">
+                    <button onclick="startAllPipeline()" class="flex-1 py-1.5 bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold rounded transition shadow shadow-cyan-600/30">Start All</button>
+                    <button onclick="stopAllPipeline()" class="flex-1 py-1.5 bg-red-600 hover:bg-red-500 text-white text-xs font-bold rounded transition shadow shadow-red-600/30">Stop All</button>
+                </div>
             </div>
 
-
-
-            <!-- Showdown Results -->
-
-            <div class="card bg-slate-800/80 border-slate-600 flex-grow overflow-y-auto custom-scrollbar flex flex-col">
-
-                <div class="flex justify-between items-center mb-3 pb-2 border-b border-slate-700">
-
-                    <h2 class="text-sm uppercase tracking-wider font-bold text-slate-400">Live Showdown</h2>
-
-                    <button onclick="fetchShowdown()" class="p-1.5 bg-slate-700 hover:bg-slate-600 rounded" title="Refresh Showdown">
-
-                        <svg class="w-4 h-4 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
-
-                    </button>
-
+            <!-- Architecture Technical Specifications Card -->
+            <div class="card bg-slate-900/80 border-slate-800 flex-grow flex flex-col justify-between text-xs">
+                <div>
+                    <h3 class="font-bold text-sm text-slate-200 uppercase tracking-wider border-b border-slate-800 pb-2 mb-3">Lakehouse Spec</h3>
+                    <ul class="space-y-2 text-slate-400 text-[11px]">
+                        <li class="flex justify-between">
+                            <span>Storage Tier:</span>
+                            <span class="text-slate-200 font-mono">MinIO / S3 Object Store</span>
+                        </li>
+                        <li class="flex justify-between">
+                            <span>Table Format:</span>
+                            <span class="text-slate-200 font-mono">Apache Iceberg v2</span>
+                        </li>
+                        <li class="flex justify-between">
+                            <span>Metadata Catalog:</span>
+                            <span class="text-slate-200 font-mono">Project Nessie (Git)</span>
+                        </li>
+                        <li class="flex justify-between">
+                            <span>File Compaction:</span>
+                            <span class="text-slate-200 font-mono">Bin-Packing Rewrite</span>
+                        </li>
+                        <li class="flex justify-between">
+                            <span>Query Engine:</span>
+                            <span class="text-slate-200 font-mono">Trino 440+</span>
+                        </li>
+                        <li class="flex justify-between">
+                            <span>Snapshot Retention:</span>
+                            <span class="text-slate-200 font-mono">10 Versions</span>
+                        </li>
+                    </ul>
                 </div>
 
-                
-
-                <div id="showdown-content" class="text-sm space-y-4 mt-2">
-
-                    <div class="text-center text-slate-500 py-4 italic">Click refresh to query data warehouses</div>
-
+                <div class="p-2.5 bg-cyan-950/30 rounded border border-cyan-800/40 text-[11px] text-cyan-300 mt-4">
+                    💡 <strong>Open Lakehouse Advantage:</strong> Complete decoupling of compute & storage with Git-like catalog branching, snapshot time-travel, and zero vendor lock-in.
                 </div>
-
             </div>
-
-
 
         </div>
 
     </div>
-
-
-
-    <!-- Frontend Logic -->
-
-    <script>
-
-        const state = { generator: 'stopped', stream_bq: 'stopped', stream_iceberg: 'stopped', dbt_run: 'stopped' };
-
-        const numFormat = new Intl.NumberFormat('en-US');
-
-        const currFormat = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
-
-        
-
-        function kFormatter(num) {
-
-            if (num === null || num === undefined || isNaN(num)) return "0";
-
-            if (num >= 1000000) return (num / 1000000).toFixed(2) + 'M';
-
-            if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
-
-            return numFormat.format(num);
-
-        }
-
-
-
-        setInterval(async () => {
-
-            await fetchStatus();
-
-            await fetchKafkaMetrics();
-
-            await fetchSparkMetrics();
-
-            await fetchLiveMetrics();
-
-            document.getElementById('last-updated').innerText = "Last updated: " + new Date().toLocaleTimeString();
-
-        }, 2000);
-
-
-
-        async function fetchStatus() {
-            try {
-                const res = await fetch('/api/status');
-                const data = await res.json();
-                
-                let anyRunning = false;
-                for (const [pid, info] of Object.entries(data)) {
-                    const status = (typeof info === 'object' && info !== null) ? info.state : info;
-                    const errorMsg = (typeof info === 'object' && info !== null) ? info.error : null;
-                    
-                    state[pid] = status;
-                    updateButtonState(pid, status);
-                    
-                    const btn = document.getElementById(`btn-${pid}`);
-                    if (errorMsg) {
-                        if (btn) {
-                            btn.classList.add("ring-2", "ring-red-500");
-                            btn.title = `Error: ${errorMsg.slice(0, 150)} (Click Logs to view)`;
-                        }
-                    } else {
-                        if (btn) {
-                            btn.classList.remove("ring-2", "ring-red-500");
-                            btn.title = "";
-                        }
-                    }
-                    
-                    const dot = document.getElementById(`status-${pid}`);
-                    if (dot) dot.className = `status-dot ${status === 'running' ? 'healthy' : (errorMsg ? 'error' : 'stopped')}`;
-                    
-                    if (status === 'running') anyRunning = true;
-                }
-                
-                document.getElementById('flow-gen-kafka').classList.toggle('pulse-active', state.generator === 'running');
-                document.getElementById('flow-kafka-bqa').classList.toggle('pulse-active', state.stream_bq === 'running');
-                document.getElementById('flow-bq-storage').classList.toggle('pulse-active', state.stream_bq === 'running');
-                document.getElementById('flow-kafka-iceb').classList.toggle('pulse-active', state.stream_iceberg === 'running');
-                document.getElementById('flow-ice-storage').classList.toggle('pulse-active', state.stream_iceberg === 'running');
-
-                const gDot = document.getElementById('global-status-dot');
-                const gText = document.getElementById('global-status-text');
-                if (anyRunning) {
-                    gDot.className = 'status-dot healthy pulse-active';
-                    gText.innerText = 'PIPELINE ACTIVE';
-                    gText.className = 'font-semibold text-green-400';
-                } else {
-                    gDot.className = 'status-dot stopped';
-                    gText.innerText = 'SYSTEM IDLE';
-                    gText.className = 'font-semibold text-slate-400';
-                }
-
-            } catch (e) {
-                const gDot = document.getElementById('global-status-dot');
-                if(gDot) gDot.className = 'status-dot error';
-                const gText = document.getElementById('global-status-text');
-                if(gText) {
-                    gText.innerText = 'API DISCONNECTED';
-                    gText.className = 'font-semibold text-red-500';
-                }
-            }
-        }
-
-
-
-        async function fetchKafkaMetrics() {
-
-            try {
-
-                const res = await fetch('/api/metrics/kafka');
-
-                const data = await res.json();
-
-                
-
-                const statEl = document.getElementById('kafka-conn-status');
-
-                if (!data.healthy) {
-
-                    statEl.innerText = "UNAVAILABLE";
-
-                    statEl.className = "text-xs font-bold px-2 py-1 bg-red-500/20 text-red-400 rounded";
-
-                    return;
-
-                }
-
-                statEl.innerText = "HEALTHY";
-
-                statEl.className = "text-xs font-bold px-2 py-1 bg-green-500/20 text-green-400 rounded";
-
-
-
-                document.getElementById('gen-rate').innerText = kFormatter(data.global_events_sec);
-
-                let total = 0;
-
-                if (data.topics.sales_events) total += data.topics.sales_events.total_events || 0;
-
-                if (data.topics.inventory_events) total += data.topics.inventory_events.total_events || 0;
-
-                document.getElementById('gen-total').innerText = kFormatter(total);
-
-
-
-                if (data.topics.sales_events) {
-
-                    const t = data.topics.sales_events;
-
-                    document.getElementById('kafka-sales-parts').innerText = t.partitions || "N/A";
-
-                    document.getElementById('kafka-sales-rate').innerText = kFormatter(t.events_sec);
-
-                    document.getElementById('kafka-sales-total').innerText = kFormatter(t.total_events);
-
-                }
-
-                if (data.topics.inventory_events) {
-
-                    const t = data.topics.inventory_events;
-
-                    document.getElementById('kafka-inv-parts').innerText = t.partitions || "N/A";
-
-                    document.getElementById('kafka-inv-rate').innerText = kFormatter(t.events_sec);
-
-                    document.getElementById('kafka-inv-total').innerText = kFormatter(t.total_events);
-
-                }
-
-            } catch (e) {}
-
-        }
-
-
-
-        async function fetchSparkMetrics() {
-
-            try {
-
-                const res = await fetch('/api/metrics/spark');
-
-                const data = await res.json();
-
-                
-
-                const summarize = (queriesData) => {
-                    if (!queriesData || typeof queriesData !== 'object' || Object.keys(queriesData).length === 0) return null;
-
-                    // Handle flat aggregated metrics shape
-                    if (queriesData.inputRate !== undefined || queriesData.procRate !== undefined) {
-                        return {
-                            inRate: queriesData.inputRate || 0,
-                            procRate: queriesData.procRate || 0,
-                            duration: queriesData.duration || 0,
-                            active: (queriesData.inputRate > 0 || queriesData.procRate > 0) ? 1 : 0
-                        };
-                    }
-
-                    let inRate = 0, procRate = 0, batches = 0, duration = 0, active = 0;
-                    for (const [name, q] of Object.entries(queriesData)) {
-                        if (!q || typeof q !== 'object') continue;
-                        inRate += q.inputRowsPerSecond || 0;
-                        procRate += q.processedRowsPerSecond || 0;
-                        duration += q.batchDuration || 0;
-                        batches++;
-                        if (q.batchId !== undefined || q.id !== undefined) active++;
-                    }
-                    if (batches > 0) duration = duration / batches;
-                    return { inRate, procRate, duration, active };
-                };
-
-
-
-                const bq = summarize(data.bq);
-
-                if (bq) {
-
-                    document.getElementById('spark-bq-in').innerHTML = `${kFormatter(bq.inRate)}<span class="text-xs text-slate-500 font-normal">/s</span>`;
-
-                    document.getElementById('spark-bq-proc').innerHTML = `${kFormatter(bq.procRate)}<span class="text-xs text-slate-500 font-normal">/s</span>`;
-
-                    document.getElementById('spark-bq-batch').innerText = (bq.duration/1000).toFixed(1) + 's';
-
-                    document.getElementById('spark-bq-active').innerText = bq.active > 0 ? 'YES' : 'NO';
-
-                }
-
-
-
-                const ice = summarize(data.iceberg);
-
-                if (ice) {
-
-                    document.getElementById('spark-ice-in').innerHTML = `${kFormatter(ice.inRate)}<span class="text-xs text-slate-500 font-normal">/s</span>`;
-
-                    document.getElementById('spark-ice-proc').innerHTML = `${kFormatter(ice.procRate)}<span class="text-xs text-slate-500 font-normal">/s</span>`;
-
-                    document.getElementById('spark-ice-batch').innerText = (ice.duration/1000).toFixed(1) + 's';
-
-                    document.getElementById('spark-ice-active').innerText = ice.active > 0 ? 'YES' : 'NO';
-
-                }
-
-            } catch (e) {}
-
-        }
-
-
-
-        async function fetchLiveMetrics() {
-
-            try {
-
-                const res = await fetch('/api/metrics/live');
-
-                const data = await res.json();
-
-                
-
-                if (data.bq) {
-
-                    document.getElementById('bq-total-rows').innerText = kFormatter(data.bq.total_rows);
-
-                    document.getElementById('bq-ingest-rate').innerText = kFormatter(data.bq.rows_per_sec) + "/s";
-
-                }
-
-                
-
-                if (data.iceberg) {
-
-                    document.getElementById('iceberg-total-rows').innerText = kFormatter(data.iceberg.total_rows);
-
-                    document.getElementById('iceberg-ingest-rate').innerText = kFormatter(data.iceberg.rows_per_sec) + "/s";
-
-                }
-
-            } catch (e) {}
-
-        }
-
-
-
-        async function fetchShowdown() {
-
-            const container = document.getElementById('showdown-content');
-
-            container.innerHTML = '<div class="text-center py-4 text-slate-400 animate-pulse">Running analytical queries...</div>';
-
-            
-
-            try {
-
-                const res = await fetch('/api/metrics/showdown');
-
-                const data = await res.json();
-
-                
-
-                const bqRev = data.bq?.total_revenue || 0;
-
-                const iceRev = data.iceberg?.total_revenue || 0;
-
-                const match = Math.abs(bqRev - iceRev) < 1.0 && bqRev > 0;
-
-                
-
-                let html = `
-
-                    <div class="bg-slate-900/80 p-3 rounded border border-slate-700">
-
-                        <div class="text-xs text-slate-500 mb-1">Total Revenue</div>
-
-                        <div class="flex justify-between items-center">
-
-                            <div class="text-green-400 font-mono">${currFormat.format(bqRev)}</div>
-
-                            <div class="text-xs text-slate-600">vs</div>
-
-                            <div class="text-purple-400 font-mono">${currFormat.format(iceRev)}</div>
-
-                        </div>
-
-                    </div>
-
-                    
-
-                    <div class="bg-slate-900/80 p-3 rounded border border-slate-700">
-
-                        <div class="text-xs text-slate-500 mb-1">Total Transactions</div>
-
-                        <div class="flex justify-between items-center">
-
-                            <div class="text-green-400 font-mono">${numFormat.format(data.bq?.total_transactions || 0)}</div>
-
-                            <div class="text-xs text-slate-600">vs</div>
-
-                            <div class="text-purple-400 font-mono">${numFormat.format(data.iceberg?.total_transactions || 0)}</div>
-
-                        </div>
-
-                    </div>
-
-                    
-
-                    <div class="mt-4 p-2 text-center rounded border ${match ? 'bg-green-900/20 border-green-700 text-green-400' : 'bg-red-900/20 border-red-700 text-red-400'}">
-
-                        <div class="font-bold text-sm">${match ? 'DATA MATCHES' : 'DATA DISCREPANCY'}</div>
-
-                    </div>
-
-                `;
-
-                container.innerHTML = html;
-
-            } catch (e) {
-
-                container.innerHTML = `<div class="text-center py-4 text-red-400 text-xs">Error: ${e.message}</div>`;
-
-            }
-
-        }
-
-
-
-        async function toggleProcess(pid) {
-
-            const currentStatus = state[pid];
-
-            const action = currentStatus === 'running' ? 'stop' : 'start';
-
-            const btn = document.getElementById(`btn-${pid}`);
-
-            btn.innerText = "WAIT";
-
-            btn.className = "px-3 py-1 text-xs font-bold rounded bg-yellow-500 text-yellow-900 w-20";
-
-            
-
-            try {
-
-                await fetch(`/api/process/${pid}/${action}`, { method: 'POST' });
-
-                await fetchStatus(); 
-
-            } catch (e) {}
-
-        }
-
-
-
-        function updateButtonState(pid, status) {
-
-            const btn = document.getElementById(`btn-${pid}`);
-
-            if (!btn) return;
-
-            
-
-            if (status === 'running') {
-
-                btn.innerText = "STOP";
-
-                btn.className = "px-3 py-1 text-xs font-bold rounded bg-red-500 hover:bg-red-600 text-white w-20 shadow-lg shadow-red-500/20 animate-pulse";
-
-            } else {
-
-                btn.innerText = pid === 'dbt_run' ? "RUN" : "START";
-
-                btn.className = pid === 'dbt_run' 
-
-                    ? "px-3 py-1 text-xs font-bold rounded bg-blue-600 hover:bg-blue-500 text-white w-20 shadow"
-
-                    : "px-3 py-1 text-xs font-bold rounded bg-slate-600 hover:bg-slate-500 text-white w-20 shadow";
-
-            }
-
-        }
-
-        
-
-        fetchStatus();
-
-    </script>
-
-
 
     <!-- Health Check Modal -->
-
     <div id="health-modal" class="hidden fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center z-50">
-
-        <div class="bg-slate-900 border border-slate-700 p-6 rounded-lg shadow-2xl w-[600px] max-w-[90vw]">
-
+        <div class="bg-slate-900 border border-slate-700 p-6 rounded-xl shadow-2xl w-[600px] max-w-[90vw]">
             <div class="flex justify-between items-center mb-4">
-
-                <h2 class="text-xl font-bold text-white flex items-center"><span class="mr-2">Health Check</span> Infrastructure Health</h2>
-
-                <button onclick="document.getElementById('health-modal').classList.add('hidden')" class="text-slate-400 hover:text-white">X</button>
-
+                <h2 class="text-lg font-bold text-white flex items-center">
+                    <span class="mr-2">⚡</span> Infrastructure Health
+                </h2>
+                <button onclick="document.getElementById('health-modal').classList.add('hidden')" class="text-slate-400 hover:text-white font-bold">✕</button>
             </div>
-
             <div id="health-content" class="space-y-3 font-mono text-sm">
-
-                <div class="animate-pulse text-indigo-400">Probing backend services...</div>
-
+                <div class="animate-pulse text-cyan-400">Probing backend services...</div>
             </div>
-
             <div class="mt-6 text-right">
-
-                <button onclick="runHealthCheck()" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded text-sm font-semibold border border-slate-700">Refresh</button>
-
+                <button onclick="runHealthCheck()" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded text-xs font-semibold border border-slate-700">Refresh</button>
             </div>
-
         </div>
-
     </div>
-
-    
-
-    <script>
-
-        async function runHealthCheck() {
-
-            const modal = document.getElementById('health-modal');
-
-            const content = document.getElementById('health-content');
-
-            modal.classList.remove('hidden');
-
-            content.innerHTML = '<div class="animate-pulse text-indigo-400">Probing backend services...</div>';
-
-            
-
-            try {
-
-                const res = await fetch('/api/health');
-
-                const data = await res.json();
-
-                
-
-                let html = '';
-
-                for (const [service, info] of Object.entries(data)) {
-
-                    const isOk = info.status === 'ok';
-
-                    const icon = isOk ? 'OK' : (info.status === 'warning' ? 'WARN' : 'ERR');
-
-                    const color = isOk ? 'text-green-400' : (info.status === 'warning' ? 'text-yellow-400' : 'text-red-400');
-
-                    const border = isOk ? 'border-green-500/20' : 'border-red-500/20';
-
-                    const bg = isOk ? 'bg-green-500/5' : 'bg-red-500/5';
-
-                    
-
-                    html += `
-                        <div class="flex flex-col p-3 border ${border} ${bg} rounded">
-                            <div class="flex justify-between items-center">
-                                <span class="font-bold text-slate-200 capitalize">${service}</span>
-                                <span class="${color} font-bold text-xs uppercase tracking-wider">${icon}</span>
-                            </div>
-                            <div class="text-slate-400 text-xs mt-1 break-all">${info.details || ''}</div>
-                        </div>
-                    `;
-                }
-                content.innerHTML = html;
-            } catch (e) {
-                content.innerHTML = `<div class="text-red-400">Failed to connect to health endpoint: ${e.message}</div>`;
-            }
-        }
-    </script>
 
     <!-- Log Viewer Modal -->
     <div id="log-modal" class="hidden fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center z-50">
-        <div class="bg-slate-900 border border-slate-700 p-6 rounded-lg shadow-2xl w-[850px] max-w-[95vw] flex flex-col h-[75vh]">
+        <div class="bg-slate-900 border border-slate-700 p-6 rounded-xl shadow-2xl w-[850px] max-w-[95vw] flex flex-col h-[75vh]">
             <div class="flex justify-between items-center mb-3 pb-2 border-b border-slate-800">
                 <div class="flex items-center">
                     <span class="status-dot healthy mr-2"></span>
-                    <h2 id="log-title" class="text-lg font-bold text-white font-mono">Process Output Logs</h2>
+                    <h2 id="log-title" class="text-sm font-bold text-white font-mono">Process Output Logs</h2>
                 </div>
-                <button onclick="document.getElementById('log-modal').classList.add('hidden')" class="text-slate-400 hover:text-white font-bold px-2 py-1 text-sm bg-slate-800 hover:bg-slate-700 rounded">X</button>
+                <button onclick="document.getElementById('log-modal').classList.add('hidden')" class="text-slate-400 hover:text-white font-bold px-2 py-1 text-sm bg-slate-800 hover:bg-slate-700 rounded">✕</button>
             </div>
-            <pre id="log-content" class="bg-slate-950 text-slate-300 p-4 rounded border border-slate-800 font-mono text-xs overflow-y-auto flex-grow whitespace-pre-wrap selection:bg-blue-900"></pre>
+            <pre id="log-content" class="bg-slate-950 text-slate-300 p-4 rounded border border-slate-800 font-mono text-xs overflow-y-auto flex-grow whitespace-pre-wrap selection:bg-cyan-900"></pre>
             <div class="mt-4 flex justify-between items-center pt-2 border-t border-slate-800 text-xs">
                 <span class="text-slate-500">Live Process Console Output</span>
                 <button onclick="refreshCurrentLogs()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold rounded border border-slate-700">Refresh Logs</button>
@@ -1100,8 +384,143 @@
         </div>
     </div>
 
+    <!-- Frontend Telemetry & Reactive Polling Script -->
     <script>
+        const currFormat = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
+        const numFormat = new Intl.NumberFormat('en-US');
+        function kFormatter(num) {
+            if (!num) return '0';
+            return Math.abs(num) > 999999 ? Math.sign(num)*((Math.abs(num)/1000000).toFixed(1)) + 'M' : Math.abs(num) > 999 ? Math.sign(num)*((Math.abs(num)/1000).toFixed(1)) + 'k' : Math.sign(num)*Math.abs(num);
+        }
+
+        let state = {};
         let currentLogPid = null;
+
+        async function fetchStatus() {
+            try {
+                const res = await fetch('/api/status');
+                const data = await res.json();
+                state = {};
+                for (const [pid, info] of Object.entries(data)) {
+                    state[pid] = info.state;
+                    updateButtonState(pid, info.state);
+                    const opStatus = document.getElementById(`op-status-${pid}`);
+                    if (opStatus) {
+                        opStatus.innerText = info.state === 'running' ? `Running (PID ${info.pid})` : (info.exit_code !== null ? `Stopped (${info.exit_code})` : 'Stopped');
+                        opStatus.className = info.state === 'running' ? 'text-[10px] text-emerald-400 font-semibold' : 'text-[10px] text-slate-400';
+                    }
+                }
+            } catch (e) {}
+        }
+
+        async function fetchKafka() {
+            try {
+                const res = await fetch('/api/metrics/kafka');
+                const data = await res.json();
+                if (data.healthy && data.topics) {
+                    const sales = data.topics.sales_events || { events_sec: 0, total_events: 0 };
+                    const inv = data.topics.inventory_events || { events_sec: 0, total_events: 0 };
+
+                    document.getElementById('kafka-sales-rate').innerText = kFormatter(sales.events_sec) + "/s";
+                    document.getElementById('kafka-sales-total').innerText = numFormat.format(sales.total_events);
+                    document.getElementById('kafka-inv-rate').innerText = kFormatter(inv.events_sec) + "/s";
+                    document.getElementById('kafka-inv-total').innerText = numFormat.format(inv.total_events);
+
+                    document.getElementById('kpi-kafka-rate').innerText = kFormatter(data.global_events_sec);
+                    document.getElementById('kpi-kafka-total').innerText = kFormatter(sales.total_events + inv.total_events);
+                }
+            } catch (e) {}
+        }
+
+        async function fetchLive() {
+            try {
+                const res = await fetch('/api/metrics/live');
+                const data = await res.json();
+                if (data.iceberg) {
+                    const totalRows = data.iceberg.total_rows || 0;
+                    const rate = data.iceberg.rows_per_sec || 0;
+                    document.getElementById('kpi-iceberg-rate').innerText = kFormatter(rate);
+                    document.getElementById('kpi-iceberg-total').innerText = numFormat.format(totalRows);
+
+                    document.getElementById('iceberg-sales-rows').innerText = numFormat.format(data.iceberg.sales_rows || 0) + " rows";
+                    document.getElementById('iceberg-inv-rows').innerText = numFormat.format(data.iceberg.inventory_rows || 0) + " rows";
+                }
+            } catch (e) {}
+        }
+
+        async function fetchShowdown() {
+            try {
+                const res = await fetch('/api/metrics/showdown');
+                const data = await res.json();
+                if (data.iceberg) {
+                    const rev = data.iceberg.total_revenue || 0;
+                    const units = data.iceberg.total_units_sold || 0;
+                    const txns = data.iceberg.total_transactions || 0;
+
+                    document.getElementById('kpi-gold-revenue').innerText = currFormat.format(rev);
+                    document.getElementById('kpi-gold-txns').innerText = numFormat.format(txns) + " txns";
+
+                    document.getElementById('mart-revenue').innerText = currFormat.format(rev);
+                    document.getElementById('mart-units').innerText = numFormat.format(units);
+                    document.getElementById('mart-txns').innerText = numFormat.format(txns);
+                }
+            } catch (e) {}
+        }
+
+        async function toggleProcess(pid) {
+            const currentStatus = state[pid];
+            const action = currentStatus === 'running' ? 'stop' : 'start';
+            const btn = document.getElementById(`btn-${pid}`);
+            const opBtn = document.getElementById(`op-btn-${pid}`);
+            if (btn) btn.innerText = "WAIT...";
+            if (opBtn) opBtn.innerText = "WAIT...";
+
+            try {
+                await fetch(`/api/process/${pid}/${action}`, { method: 'POST' });
+                await fetchStatus();
+            } catch (e) {}
+        }
+
+        function updateButtonState(pid, status) {
+            const btn = document.getElementById(`btn-${pid}`);
+            const opBtn = document.getElementById(`op-btn-${pid}`);
+
+            const isRunning = status === 'running';
+            const text = isRunning ? "STOP" : (pid.includes("maintenance") ? "COMPACT" : (pid.includes("transform") ? "TRANSFORM" : "START"));
+            const baseClass = isRunning
+                ? "px-3 py-1 text-xs font-bold rounded bg-red-600 hover:bg-red-500 text-white shadow animate-pulse"
+                : "px-3 py-1 text-xs font-bold rounded bg-slate-700 hover:bg-slate-600 text-white shadow";
+
+            if (btn) {
+                btn.innerText = text;
+                btn.className = baseClass;
+            }
+            if (opBtn) {
+                opBtn.innerText = text;
+                opBtn.className = isRunning
+                    ? "px-2.5 py-1 text-xs font-bold rounded bg-red-600 text-white"
+                    : "px-2.5 py-1 text-xs font-bold rounded bg-slate-700 text-white";
+            }
+        }
+
+        async function startAllPipeline() {
+            for (const pid of ['generator', 'stream_iceberg', 'transform_iceberg']) {
+                if (state[pid] !== 'running') {
+                    await fetch(`/api/process/${pid}/start`, { method: 'POST' });
+                }
+            }
+            await fetchStatus();
+        }
+
+        async function stopAllPipeline() {
+            for (const pid of ['generator', 'stream_iceberg', 'transform_iceberg', 'maintenance_iceberg']) {
+                if (state[pid] === 'running') {
+                    await fetch(`/api/process/${pid}/stop`, { method: 'POST' });
+                }
+            }
+            await fetchStatus();
+        }
+
         async function viewLogs(pid) {
             currentLogPid = pid;
             const modal = document.getElementById('log-modal');
@@ -1125,11 +544,53 @@
                 content.innerText = 'Failed to load logs: ' + e.message;
             }
         }
+
+        async function runHealthCheck() {
+            const modal = document.getElementById('health-modal');
+            const content = document.getElementById('health-content');
+            modal.classList.remove('hidden');
+            content.innerHTML = '<div class="animate-pulse text-cyan-400">Probing lakehouse services...</div>';
+
+            try {
+                const res = await fetch('/api/health');
+                const data = await res.json();
+                let html = '';
+                for (const [service, info] of Object.entries(data)) {
+                    const isOk = info.status === 'ok';
+                    const icon = isOk ? 'OK' : (info.status === 'warning' ? 'WARN' : 'ERR');
+                    const color = isOk ? 'text-emerald-400' : (info.status === 'warning' ? 'text-yellow-400' : 'text-red-400');
+                    const border = isOk ? 'border-emerald-500/20' : 'border-red-500/20';
+                    const bg = isOk ? 'bg-emerald-500/5' : 'bg-red-500/5';
+
+                    html += `
+                        <div class="flex flex-col p-3 border ${border} ${bg} rounded-lg">
+                            <div class="flex justify-between items-center">
+                                <span class="font-bold text-slate-200 capitalize">${service}</span>
+                                <span class="${color} font-bold text-xs uppercase tracking-wider">${icon}</span>
+                            </div>
+                            <div class="text-slate-400 text-xs mt-1 break-all">${info.details || ''}</div>
+                        </div>
+                    `;
+                }
+                content.innerHTML = html;
+            } catch (e) {
+                content.innerHTML = `<div class="text-red-400">Failed to connect to health endpoint: ${e.message}</div>`;
+            }
+        }
+
+        // Loop execution
+        async function poll() {
+            await Promise.all([
+                fetchStatus(),
+                fetchKafka(),
+                fetchLive(),
+                fetchShowdown()
+            ]);
+            document.getElementById('last-updated').innerText = 'Last updated: ' + new Date().toLocaleTimeString();
+        }
+
+        poll();
+        setInterval(poll, 2000);
     </script>
-
 </body>
-
-
-
 </html>
-

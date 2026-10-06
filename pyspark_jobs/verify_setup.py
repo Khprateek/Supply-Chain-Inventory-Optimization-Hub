@@ -1,28 +1,17 @@
 """
 verify_setup.py
 ===============
-Quick smoke-test script for Phase 1 of the PySpark integration.
+Quick smoke-test script to verify environment and lakehouse prerequisites.
 
-Run this FIRST to verify that:
+Run this to verify that:
   1. PySpark is correctly installed.
   2. The SparkSession factory works in local mode.
   3. Basic Spark operations (DataFrame creation, SQL, Parquet write) work.
-  4. The BigQuery connector JAR is found (if downloaded).
-  5. GCP credentials are readable (if configured).
+  4. Windows winutils / HADOOP_HOME is properly configured.
+  5. Lakehouse services (Kafka, Nessie, S3, Trino) are reachable.
 
-Usage (Windows):
-    $env:JAVA_HOME="C:\\Program Files\\Microsoft\\jdk-21.0.12.101-hotspot"
-    $env:PATH="$env:JAVA_HOME\\bin;" + $env:PATH
+Usage (PowerShell):
     python pyspark_jobs/verify_setup.py
-
-Expected output on success:
-    [PASS] PySpark version: 3.5.x
-    [PASS] SparkSession created in local mode
-    [PASS] DataFrame operations work
-    [PASS] Parquet round-trip works
-    [PASS] BigQuery connector JAR found
-    [INFO] GCP credentials: ...
-    Phase 1 setup verification PASSED
 """
 
 import os
@@ -30,16 +19,16 @@ import sys
 import tempfile
 import platform
 import subprocess
+import socket
 
-# ---------------------------------------------------------------------------
 # Make sure we import from the project root
-# ---------------------------------------------------------------------------
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, PROJECT_ROOT)
 
 PASS = "[PASS]"
 FAIL = "[FAIL]"
 INFO = "[INFO]"
+WARN = "[WARN]"
 SEP  = "-" * 70
 
 all_passed = True
@@ -59,9 +48,7 @@ def section(title: str) -> None:
     print(f"\n-- {title} {'-' * (65 - len(title))}")
 
 
-# ---------------------------------------------------------------------------
-# Windows: set HADOOP_HOME before Spark starts
-# ---------------------------------------------------------------------------
+# ── Windows winutils / HADOOP_HOME ──────────────────────────────────────────
 if platform.system() == "Windows" and not os.environ.get("HADOOP_HOME"):
     winutils_dir = os.path.normpath(
         os.path.join(PROJECT_ROOT, "conf", "spark", "winutils", "hadoop-3.3.6")
@@ -70,22 +57,16 @@ if platform.system() == "Windows" and not os.environ.get("HADOOP_HOME"):
         os.environ["HADOOP_HOME"] = winutils_dir
         print(f"  {INFO} Auto-set HADOOP_HOME = {winutils_dir}")
 
-# ---------------------------------------------------------------------------
-# Windows: resolve short (8.3) path for Python executable so Spark workers
-# don't crash when the Python path contains spaces.
-# ---------------------------------------------------------------------------
 _python_exe = sys.executable
 if platform.system() == "Windows" and " " in _python_exe:
     try:
-        result = subprocess.run(
-            ["cmd", "/c", f'for %I in ("{_python_exe}") do @echo %~sI'],
-            capture_output=True, text=True, shell=False
-        )
-        short = result.stdout.strip()
-        if short and os.path.exists(short):
-            _python_exe = short
+        import ctypes
+        buf = ctypes.create_unicode_buffer(512)
+        if ctypes.windll.kernel32.GetShortPathNameW(_python_exe, buf, 512):
+            if buf.value and os.path.exists(buf.value):
+                _python_exe = buf.value
     except Exception:
-        pass  # keep original
+        pass
 
 os.environ["PYSPARK_PYTHON"] = _python_exe
 os.environ["PYSPARK_DRIVER_PYTHON"] = _python_exe
@@ -98,16 +79,9 @@ section("1. Checking PySpark installation")
 try:
     import pyspark
     check("PySpark installed", True, f"version {pyspark.__version__}")
-
-    # Warn if using PySpark 3.5 with Python 3.12 (incompatible)
-    import sys as _sys
-    if pyspark.__version__.startswith("3.") and _sys.version_info >= (3, 12):
-        print(f"  {INFO} WARNING: PySpark 3.x does NOT support Python 3.12.")
-        print(f"          Upgrade: pip install pyspark==4.0.4")
-
 except ImportError as e:
     check("PySpark installed", False, str(e))
-    print("\n  Fix: pip install pyspark==4.0.4")
+    print("\n  Fix: pip install pyspark")
     sys.exit(1)
 
 
@@ -121,8 +95,8 @@ try:
 
     spark = (
         SparkSession.builder
-        .master("local[1]")              # single-threaded: avoids Python 3.12 worker issues on Windows
-        .appName("VerifySetup")
+        .master("local[1]")
+        .appName("VerifyLakehouseSetup")
         .config("spark.driver.memory", "2g")
         .config("spark.sql.shuffle.partitions", "1")
         .config("spark.sql.adaptive.enabled", "false")
@@ -146,9 +120,7 @@ df = None
 if spark:
     try:
         from pyspark.sql import functions as F
-        from pyspark.sql.types import (
-            StructType, StructField, StringType, IntegerType, DoubleType
-        )
+        from pyspark.sql.types import StructType, StructField, StringType, IntegerType, DoubleType
 
         schema = StructType([
             StructField("sku_id",       StringType(),  nullable=False),
@@ -194,8 +166,7 @@ if spark:
 
 
 # ===========================================================================
-# 4. Parquet read/write round-trip (using PyArrow directly — avoids Spark
-#    Python worker crashes on Windows with PySpark 3.5 + Python 3.12)
+# 4. Parquet read/write round-trip
 # ===========================================================================
 section("4. Testing Parquet read/write")
 if spark and df is not None:
@@ -205,14 +176,11 @@ if spark and df is not None:
 
         with tempfile.TemporaryDirectory() as tmp:
             parquet_path = os.path.join(tmp, "test_sc_data.parquet")
-
-            # Collect DataFrame to driver and write via PyArrow
             pandas_df = df.toPandas()
             table = pa.Table.from_pandas(pandas_df)
             pq.write_table(table, parquet_path, compression="snappy")
             check("Parquet write (PyArrow)", True, f"{len(pandas_df)} rows written")
 
-            # Read back via Spark (reading Parquet is driver-side, no Python worker needed)
             df_back = spark.read.parquet(parquet_path)
             rc = df_back.count()
             check("Parquet read-back via Spark", rc == 5, f"{rc} rows")
@@ -223,44 +191,36 @@ else:
     print(f"  {INFO} Skipped (SparkSession not available)")
 
 
-
 # ===========================================================================
-# 5. BigQuery connector JAR
+# 5. Lakehouse Service Connectivity
 # ===========================================================================
-section("5. Checking BigQuery connector JAR")
-# PySpark 4.0 → Scala 2.13 connector  |  PySpark 3.5 → Scala 2.12 connector
-jar_path_4x = os.path.join(
-    PROJECT_ROOT, "conf", "spark", "jars",
-    "spark-bigquery-with-dependencies_2.13-0.38.0.jar"
-)
-jar_path_3x = os.path.join(
-    PROJECT_ROOT, "conf", "spark", "jars",
-    "spark-bigquery-with-dependencies_2.12-0.36.1.jar"  # kept from initial download
-)
-jar_path = jar_path_4x if os.path.exists(jar_path_4x) else jar_path_3x
-if os.path.exists(jar_path):
-    size_mb = os.path.getsize(jar_path) / (1024 * 1024)
-    check("BQ connector JAR present", True, f"{size_mb:.1f} MB at {jar_path}")
-else:
-    check(
-        "BQ connector JAR present", False,
-        f"Not found: {jar_path} -- Run: python scripts/download_spark_jars.py"
-    )
+section("5. Checking Lakehouse Services")
 
 
-# ===========================================================================
-# 6. GCP credentials
-# ===========================================================================
-section("6. GCP credentials check")
-creds_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "")
-if creds_path:
-    exists = os.path.exists(creds_path)
-    check("GOOGLE_APPLICATION_CREDENTIALS set and file exists", exists, creds_path)
-else:
-    print(f"  {INFO} GOOGLE_APPLICATION_CREDENTIALS not set.")
-    print(f"        For BigQuery connectivity, either:")
-    print(f"        a) Set GOOGLE_APPLICATION_CREDENTIALS=/path/to/sa-key.json")
-    print(f"        b) Run: gcloud auth application-default login")
+def check_port(host: str, port: int) -> bool:
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.settimeout(1.5)
+    try:
+        s.connect((host, port))
+        s.close()
+        return True
+    except Exception:
+        return False
+
+
+services = [
+    ("Kafka Broker", "localhost", 29092),
+    ("LocalStack S3", "localhost", 4566),
+    ("Project Nessie Catalog", "localhost", 19120),
+    ("Trino SQL Engine", "localhost", 8080),
+]
+
+for svc_name, host, port in services:
+    is_up = check_port(host, port)
+    if is_up:
+        print(f"  {PASS} {svc_name} reachable at {host}:{port}")
+    else:
+        print(f"  {WARN} {svc_name} offline at {host}:{port} (Start via: docker-compose up -d)")
 
 
 # ===========================================================================
@@ -268,9 +228,9 @@ else:
 # ===========================================================================
 print(f"\n{SEP}")
 if all_passed:
-    print("  Phase 1 setup verification PASSED -- ready to start Phase 2!")
+    print("  Lakehouse local environment verification PASSED!")
 else:
-    print("  Some checks FAILED -- fix the items above and re-run.")
+    print("  Some checks FAILED -- review errors above.")
 print(f"{SEP}\n")
 
 if spark:

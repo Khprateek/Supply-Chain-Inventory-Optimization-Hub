@@ -1,17 +1,17 @@
 """
 logging_utils.py
 ================
-Structured logging setup for PySpark jobs.
+Structured logging setup for PySpark jobs in the Open Data Lakehouse.
 
 Sets up Python logging + adjusts Spark/Py4J verbosity so the console stays
-readable during development (Spark's default output is extremely noisy).
+readable during development.
 
 Usage:
     from pyspark_jobs.utils.logging_utils import configure_logging, get_logger
 
     configure_logging(level="INFO")
     logger = get_logger(__name__)
-    logger.info("Job started | config=%s", config)
+    logger.info("Job started | Lakehouse pipeline initialized")
 """
 
 import logging
@@ -20,7 +20,7 @@ import sys
 
 def configure_logging(level: str = "INFO") -> None:
     """
-    Configure root logger and quieten noisy Spark/Py4J libraries.
+    Configure root logger and quieten noisy Spark/Py4J/HTTP libraries.
 
     Args:
         level: Python log level string: "DEBUG" | "INFO" | "WARNING" | "ERROR".
@@ -35,11 +35,11 @@ def configure_logging(level: str = "INFO") -> None:
         force=True,
     )
 
-    # Quieten extremely verbose libraries so we can see our own log lines
+    # Quieten verbose libraries so pipeline operational messages remain clear
     logging.getLogger("py4j").setLevel(logging.WARNING)
     logging.getLogger("pyspark").setLevel(logging.WARNING)
     logging.getLogger("urllib3").setLevel(logging.WARNING)
-    logging.getLogger("google.auth").setLevel(logging.WARNING)
+    logging.getLogger("botocore").setLevel(logging.WARNING)
 
 
 def get_logger(name: str) -> logging.Logger:
@@ -50,7 +50,7 @@ def get_logger(name: str) -> logging.Logger:
 def log_spark_config(spark) -> None:
     """
     Print the most relevant active Spark configuration values.
-    Useful for verifying env, memory, and BigQuery settings at job start.
+    Useful for verifying lakehouse catalog, memory, and S3 settings at job start.
     """
     logger = get_logger("spark_config")
     interesting_keys = [
@@ -60,13 +60,16 @@ def log_spark_config(spark) -> None:
         "spark.executor.memory",
         "spark.sql.shuffle.partitions",
         "spark.sql.adaptive.enabled",
-        "spark.bigquery.project",
-        "spark.bigquery.tempGcsBucket",
-        "spark.bigquery.read.format",
+        "spark.sql.extensions",
+        "spark.sql.catalog.nessie",
+        "spark.sql.catalog.nessie.uri",
+        "spark.sql.catalog.nessie.warehouse",
+        "spark.sql.catalog.nessie.s3.endpoint",
+        "spark.hadoop.fs.s3a.endpoint",
     ]
-    logger.info("─── Active Spark Configuration ───────────────────────────────")
+    logger.info("─── Active Lakehouse Spark Configuration ────────────────────")
     conf = spark.sparkContext.getConf()
     for key in interesting_keys:
         value = conf.get(key, "<not set>")
-        logger.info("  %-45s = %s", key, value)
-    logger.info("──────────────────────────────────────────────────────────────")
+        logger.info("  %-42s = %s", key, value)
+    logger.info("─────────────────────────────────────────────────────────────")

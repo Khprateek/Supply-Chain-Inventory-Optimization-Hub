@@ -1,4 +1,4 @@
-﻿import sys
+import sys
 import os
 import time
 from pyspark.sql import SparkSession
@@ -7,11 +7,6 @@ from pyspark.sql.types import StructType, StructField, StringType, DoubleType, L
 
 spark = SparkSession.builder \
     .appName("Iceberg-Transform-Pipeline") \
-    .config("spark.jars.packages", 
-            "org.apache.iceberg:iceberg-spark-runtime-3.5_2.12:1.5.0,"
-            "org.projectnessie.nessie-integrations:nessie-spark-extensions-3.5_2.12:0.77.1,"
-            "software.amazon.awssdk:bundle:2.20.18,"
-            "software.amazon.awssdk:url-connection-client:2.20.18") \
     .config("spark.sql.extensions", "org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions,org.projectnessie.spark.extensions.NessieSparkSessionExtensions") \
     .config("spark.sql.catalog.nessie", "org.apache.iceberg.spark.SparkCatalog") \
     .config("spark.sql.catalog.nessie.catalog-impl", "org.apache.iceberg.nessie.NessieCatalog") \
@@ -66,7 +61,6 @@ CREATE TABLE IF NOT EXISTS nessie.inventory.structured_events (
     ingested_at TIMESTAMP,
     transformed_at TIMESTAMP
 ) USING iceberg
-PARTITIONED BY (days(transformed_at))
 ''')
 
 spark.sql('''
@@ -80,7 +74,6 @@ CREATE TABLE IF NOT EXISTS nessie.sales.structured_events (
     ingested_at TIMESTAMP,
     transformed_at TIMESTAMP
 ) USING iceberg
-PARTITIONED BY (days(transformed_at))
 ''')
 
 def start_transform(schema, source_table, target_table):
@@ -102,13 +95,15 @@ def start_transform(schema, source_table, target_table):
     return enriched_df.coalesce(4).writeStream \
         .format("iceberg") \
         .outputMode("append") \
-        .trigger(processingTime="1 minute") \
+        .trigger(processingTime="10 seconds") \
         .option("path", f"nessie.{target_table}") \
         .option("checkpointLocation", f"/opt/spark/work-dir/streaming/checkpoints/v2_transform_{target_table.replace('.','_')}_chkpt") \
         .start()
 
 inv_query = start_transform(inventory_schema, "inventory.raw_events", "inventory.structured_events")
 sales_query = start_transform(sales_schema, "sales.raw_events", "sales.structured_events")
+
+print("Both transforms running! Press Ctrl+C to stop.")
 
 try:
     while True:
@@ -118,8 +113,11 @@ try:
                 inv_query.stop()
                 sales_query.stop()
                 raise q.exception()
-        time.sleep(10)
-except KeyboardInterrupt:
+        time.sleep(5)
+except (KeyboardInterrupt, SystemExit):
     print("Stopping transforms gracefully...")
-    inv_query.stop()
-    sales_query.stop()
+    try:
+        inv_query.stop()
+        sales_query.stop()
+    except Exception:
+        pass

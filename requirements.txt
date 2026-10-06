@@ -1,31 +1,29 @@
 # Enterprise Supply Chain & Inventory Optimization Hub Dependencies
 # Python 3.12+
 
-# ── Core data generation (Pandas / Parquet layer) ──────────────────────────
+# ── Core Data & Telemetry Generation ──────────────────────────────────────
 pandas==2.2.2
 pyarrow==16.1.0
 numpy==2.4.3
 pyyaml==6.0.3
 
-# ── dbt transformation layer ───────────────────────────────────────────────
-dbt-core==1.8.0
-dbt-bigquery==1.8.0
-duckdb>=1.0.0
-dbt-duckdb>=1.8.0
+# ── Distributed Streaming & Message Broker ─────────────────────────────────
+confluent-kafka>=2.3.0
 
-# ── Phase 1: PySpark & Google Cloud Platform SDK ───────────────────────────
-# PySpark 4.0.x — supports Python 3.12 (3.5.x does NOT support Python 3.12)
-# Requires Java 8, 11, 17, or 21 — NOT Java 25.
+# ── Distributed Stream & Batch Processing (Apache Spark) ──────────────────
+# PySpark 4.0.x — full Python 3.12 compatibility
+# Requires Java 8, 11, 17, or 21 (LTS)
 pyspark==4.0.4
 
-# Google Cloud BigQuery connector (Python SDK for admin tasks)
-google-cloud-bigquery==3.25.0
+# ── Lakehouse Query Engine ────────────────────────────────────────────────
+trino>=0.328.0
 
-# Google Cloud Storage (GCS bucket operations)
-google-cloud-storage==2.18.2
+# ── API & Observability Dashboard ──────────────────────────────────────────
+fastapi>=0.100.0
+uvicorn>=0.23.0
+pydantic>=2.0.0
+jinja2>=3.1.0
+requests>=2.31.0
 
-# Google Cloud Dataproc (cluster create / delete / job submit via Python SDK)
-google-cloud-dataproc==5.15.1
-
-# python-dotenv — load .env files for local development
+# ── Environment Configuration ─────────────────────────────────────────────
 python-dotenv>=1.0.0
