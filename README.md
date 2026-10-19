@@ -3,7 +3,7 @@
 
 <div align="center">
 
-[![Python](https://img.shields.io/badge/Python-3.10%20%7C%203.11%20%7C%203.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![Python](https://img.shields.io/badge/Python-3.11%20%7C%203.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![CI](https://img.shields.io/badge/CI-Passing-brightgreen?logo=github-actions&logoColor=white)](.github/workflows/ci.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Kafka](https://img.shields.io/badge/Apache_Kafka-3.4-231F20?logo=apache-kafka&logoColor=white)](https://kafka.apache.org/)
@@ -311,14 +311,4 @@ When you are finished testing, reclaim system resources:
    ```powershell
    docker-compose down -v
    ```
-
----
-
-## 💼 Compact Resume Bullet Points
-
-* **Ingestion (Generator $\rightarrow$ Kafka):** Built a high-throughput streaming pipeline using Python and Kafka with LZ4 compression and 100K buffer pools, sustaining ~30K events/sec across 430M+ events with zero message loss. *([Methodology & Proof](docs/BENCHMARK_AND_TESTING_SUITE.md#1-performance--throughput-testing-ingestion-layer))*
-* **Stream Processing (Kafka $\rightarrow$ PySpark):** Implemented PySpark Structured Streaming with dynamic backpressure (`maxOffsets=50K`) and S3 WAL checkpoints, processing Kafka topics on 5-second triggers with exactly-once idempotency. *([Methodology & Proof](docs/BENCHMARK_AND_TESTING_SUITE.md#2-stress--backpressure-testing-stream-processing-layer))*
-* **Lakehouse Storage (Iceberg + Nessie + S3):** Architected an ACID Open Lakehouse on MinIO/S3 using Apache Iceberg v2 and Project Nessie catalog, cutting storage by 65% via ZSTD Parquet while enabling zero-copy branch rollbacks. *([Methodology & Proof](docs/BENCHMARK_AND_TESTING_SUITE.md#3-resilience--storage-efficiency-testing-lakehouse-storage-layer))*
-* **Batch Compute (Iceberg $\rightarrow$ PySpark):** Developed distributed PySpark batch jobs executing windowed deduplication and `MERGE INTO` upserts across 430M+ records, tuning shuffle partitions to eliminate driver OOMs and disk spills. *([Methodology & Proof](docs/BENCHMARK_AND_TESTING_SUITE.md#4-capacity--volume-scaling-testing-batch-compute-layer))*
-* **Serving & Optimization (Gold Mart $\rightarrow$ Trino):** Modeled Gold-tier Iceberg marts with automated bin-packing compaction (`rewrite_data_files`), slashing small-file fragmentation by 80%+ and unlocking sub-second Trino OLAP queries. *([Methodology & Proof](docs/BENCHMARK_AND_TESTING_SUITE.md#5-scalability--compaction-testing-serving--optimization-layer))*
 

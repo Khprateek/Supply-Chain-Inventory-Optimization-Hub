@@ -1,19 +1,18 @@
 # Enterprise Supply Chain & Inventory Optimization Hub Dependencies
-# Python 3.12+
+# Python 3.11+ / 3.12+
 
 # ── Core Data & Telemetry Generation ──────────────────────────────────────
-pandas==2.2.2
-pyarrow==16.1.0
-numpy==2.4.3
-pyyaml==6.0.3
+pandas>=2.2.0
+pyarrow>=16.0.0
+numpy>=1.26.0
+pyyaml>=6.0.0
 
 # ── Distributed Streaming & Message Broker ─────────────────────────────────
 confluent-kafka>=2.3.0
 
 # ── Distributed Stream & Batch Processing (Apache Spark) ──────────────────
-# PySpark 4.0.x — full Python 3.12 compatibility
-# Requires Java 8, 11, 17, or 21 (LTS)
-pyspark==4.0.4
+# PySpark 3.5+ / 4.0.x — full Python 3.11 / 3.12 compatibility
+pyspark>=3.5.0
 
 # ── Lakehouse Query Engine ────────────────────────────────────────────────
 trino>=0.328.0
