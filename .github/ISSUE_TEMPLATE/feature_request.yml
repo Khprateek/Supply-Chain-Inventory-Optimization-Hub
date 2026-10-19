@@ -1,0 +1,35 @@
+name: "✨ Feature Request"
+description: Propose a new architecture feature, component connector, or enhancement
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for suggesting an improvement to the Enterprise Open Data Lakehouse Platform!
+  - type: textarea
+    id: problem
+    attributes:
+      label: Is your feature request related to a problem?
+      description: A clear and concise description of the limitation or need.
+      placeholder: "e.g., Currently we support Kafka JSON payloads; supporting Avro + Schema Registry would improve payload compression..."
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed Solution or Architectural Change
+      description: Describe the design or implementation approach you envision.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: Describe any alternative approaches or workarounds you've explored.
+  - type: checkboxes
+    id: contribution
+    attributes:
+      label: Contribution
+      options:
+        - label: I am willing to submit a pull request implementing this feature!

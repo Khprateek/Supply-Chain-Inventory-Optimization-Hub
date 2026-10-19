@@ -1,9 +1,9 @@
 # Page 4 — Supplier Performance & Procurement: Full Implementation Plan
 
 > **Document Version:** 1.0 — 2026-09-17  
-> **Page Reference:** [page4_supplier_performance_spec.md](file:///d:/JOB/1.Buid_Skill/Work/Enterprise%20Supply%20Chain%20%26%20Inventory%20Optimization%20Hub/docs/powerbi/page4_supplier_performance_spec.md)  
+> **Page Reference:** [page4_supplier_performance_spec.md](page4_supplier_performance_spec.md)  
 > **Target Tool:** Power BI Desktop (Semantic Model + Report Canvas)  
-> **Governing Project Context:** [PROJECT_CONTEXT.md](file:///d:/JOB/1.Buid_Skill/Work/Enterprise%20Supply%20Chain%20%26%20Inventory%20Optimization%20Hub/PROJECT_CONTEXT.md)  
+> **Governing Project Context:** [PROJECT_CONTEXT.md](../planning/PROJECT_CONTEXT.md)  
 > **Author Instruction:** When updating this page, edit sections in-place. Never delete historical decisions.
 
 ---
@@ -14,16 +14,16 @@ Before any visual is built, confirm the following project-wide constraints are a
 
 | Requirement | Source Document | Status |
 |:---|:---|:---|
-| Kimball Star Schema (FactPurchaseOrder, FactSupplierMonthlyPerformance, DimSupplier, DimDate, DimProduct, DimWarehouse) | [`dimensional_model_design.md`](file:///d:/JOB/1.Buid_Skill/Work/Enterprise%20Supply%20Chain%20%26%20Inventory%20Optimization%20Hub/docs/data-model/dimensional_model_design.md) | **Must exist in BigQuery / data source** |
+| Kimball Star Schema (FactPurchaseOrder, FactSupplierMonthlyPerformance, DimSupplier, DimDate, DimProduct, DimWarehouse) | [`dimensional_model_design.md`](../data-model/dimensional_model_design.md) | **Must exist in BigQuery / data source** |
 | Role-playing Date Relationships via `USERELATIONSHIP()` | `dimensional_model_design.md §4` | Applied for PromisedDeliveryDate, ActualDockReceiptDate |
 | SCD Type 1 on DimSupplier (current record only, no history rows) | `dimensional_model_design.md §3.3` | Confirm before joining |
 | BridgeProductSupplier for single-source risk analysis | `dimensional_model_design.md §6.1` | Optional — used in Dual-Source visual |
-| Base procurement measures already defined | [`procurement_measures.dax`](file:///d:/JOB/1.Buid_Skill/Work/Enterprise%20Supply%20Chain%20%26%20Inventory%20Optimization%20Hub/powerbi/measures/procurement_measures.dax) | **Extend — do not replace** |
-| Base supplier measures already defined | [`supplier_measures.dax`](file:///d:/JOB/1.Buid_Skill/Work/Enterprise%20Supply%20Chain%20%26%20Inventory%20Optimization%20Hub/powerbi/measures/supplier_measures.dax) | **Extend — do not replace** |
-| DimSupplier.SupplierTier values must be exactly: `'Tier 1 Strategic'`, `'Tier 2 Preferred'`, `'Tier 3 Tactical'` | [`schema_specification.md §1.3`](file:///d:/JOB/1.Buid_Skill/Work/Enterprise%20Supply%20Chain%20%26%20Inventory%20Optimization%20Hub/docs/data-model/schema_specification.md) | Verify in data generation |
+| Base procurement measures already defined | [`procurement_measures.dax`](../../powerbi/measures/procurement_measures.dax) | **Extend — do not replace** |
+| Base supplier measures already defined | [`supplier_measures.dax`](../../powerbi/measures/supplier_measures.dax) | **Extend — do not replace** |
+| DimSupplier.SupplierTier values must be exactly: `'Tier 1 Strategic'`, `'Tier 2 Preferred'`, `'Tier 3 Tactical'` | [`schema_specification.md §1.3`](../data-model/schema_specification.md) | Verify in data generation |
 | FactPurchaseOrder.POStatus values: `'Completed'`, `'Open In-Transit'`, `'Overdue'`, `'Cancelled'` | `schema_specification.md §2.3` | Used in PO Milestone visual |
 | FactSupplierMonthlyPerformance.SupplierMonthlyRiskRating values: `'Low Risk'`, `'Moderate Risk'`, `'Critical SLA Breach'` | `schema_specification.md §2.8` | Used in SLA Breach Watchlist |
-| RLS: Procurement Manager sees all regions; Warehouse Planner sees only assigned warehouse | [`rls_design.md`](file:///d:/JOB/1.Buid_Skill/Work/Enterprise%20Supply%20Chain%20%26%20Inventory%20Optimization%20Hub/docs/powerbi/rls_design.md) | Applied at semantic model level |
+| RLS: Procurement Manager sees all regions; Warehouse Planner sees only assigned warehouse | [`rls_design.md`](rls_design.md) | Applied at semantic model level |
 
 > [!IMPORTANT]
 > **Every visual on Page 4 draws from exactly two primary fact tables:**  
@@ -122,7 +122,7 @@ The measures below **already exist** in the documented `.dax` files. Do **not** 
 
 | Measure | File | Validation Benchmark |
 |:---|:---|:---|
-| `[Total Procurement Spend]` | [`procurement_measures.dax`](file:///d:/JOB/1.Buid_Skill/Work/Enterprise%20Supply%20Chain%20%26%20Inventory%20Optimization%20Hub/powerbi/measures/procurement_measures.dax) | ≈ $34.05 B |
+| `[Total Procurement Spend]` | [`procurement_measures.dax`](../../powerbi/measures/procurement_measures.dax) | ≈ $34.05 B |
 | `[Total PO Line Count]` | `procurement_measures.dax` | ≈ 1,110,903 lines |
 | `[Completed PO Line Count]` | `procurement_measures.dax` | — |
 | `[PO OTIF Line Count]` | `procurement_measures.dax` | — |
@@ -135,11 +135,11 @@ The measures below **already exist** in the documented `.dax` files. Do **not** 
 | `[Total PO Received Quantity]` | `procurement_measures.dax` | ≈ 1,364,506,058 units |
 | `[Total PO Rejected Quantity]` | `procurement_measures.dax` | ≈ 20,185,926 units |
 | `[Inbound Defect Rate Pct]` | `procurement_measures.dax` | ≈ 1.48% |
-| `[Active Supplier Count]` | [`supplier_measures.dax`](file:///d:/JOB/1.Buid_Skill/Work/Enterprise%20Supply%20Chain%20%26%20Inventory%20Optimization%20Hub/powerbi/measures/supplier_measures.dax) | = 500 |
+| `[Active Supplier Count]` | [`supplier_measures.dax`](../../powerbi/measures/supplier_measures.dax) | = 500 |
 | `[Supplier Monthly OTIF Avg Pct]` | `supplier_measures.dax` | Tier 1 ≈ 64.9%, Tier 3 ≈ 8.8% |
 | `[Scorecard Average Lead Time Days]` | `supplier_measures.dax` | Tier 1 ≈ 8.2d, Tier 3 ≈ 45.8d |
 | `[Critical SLA Breach Count]` | `supplier_measures.dax` | — |
-| `[Stockout Incident Count]` | [`service_measures.dax`](file:///d:/JOB/1.Buid_Skill/Work/Enterprise%20Supply%20Chain%20%26%20Inventory%20Optimization%20Hub/powerbi/measures/service_measures.dax) | — |
+| `[Stockout Incident Count]` | [`service_measures.dax`](../../powerbi/measures/service_measures.dax) | — |
 
 ---
 

@@ -1,0 +1,62 @@
+name: "🐛 Bug Report"
+description: File an issue about a problem or unexpected behavior in the Lakehouse platform
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report an issue! Please provide as much context as possible.
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug Description
+      description: A clear and concise description of what the problem is.
+      placeholder: "e.g., PySpark stream fails to write to MinIO S3 bucket when trigger interval is < 2s..."
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to Reproduce
+      description: How can maintainers reproduce the issue?
+      placeholder: |
+        1. Start containers via `docker compose up -d`
+        2. Run `scripts/run_iceberg_stream.cmd`
+        3. Trigger high-throughput producer `python scripts/kafka_data_generator.py --workers 2`
+        4. Observe error in Spark driver logs
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: What did you expect to happen?
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating System
+      options:
+        - Windows 11
+        - Windows 10
+        - Ubuntu / Debian Linux
+        - macOS (Apple Silicon)
+        - macOS (Intel)
+        - Other Linux
+    validations:
+      required: true
+  - type: input
+    id: python-version
+    attributes:
+      label: Python Version
+      placeholder: "e.g., Python 3.12.3"
+    validations:
+      required: false
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant Logs or Error Output
+      description: Paste relevant terminal or container logs here (please sanitize credentials).
+      render: shell

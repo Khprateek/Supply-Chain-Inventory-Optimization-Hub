@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# Run batch Iceberg transformations (Gold-tier marts materialization)
+set -e
+
+echo "Running Iceberg Batch Transformations in Docker..."
+docker exec -it spark-master /opt/spark/bin/spark-submit \
+  --master "local[4]" \
+  --driver-memory 1g \
+  --conf spark.jars.ivy=/opt/spark/work-dir/.ivy2 \
+  --conf spark.sql.shuffle.partitions=8 \
+  --driver-java-options "-XX:TieredStopAtLevel=1" \
+  --packages org.apache.iceberg:iceberg-spark-runtime-3.5_2.12:1.5.0,org.projectnessie.nessie-integrations:nessie-spark-extensions-3.5_2.12:0.77.1,software.amazon.awssdk:bundle:2.20.18,software.amazon.awssdk:url-connection-client:2.20.18 \
+  /opt/spark/work-dir/complex_transforms/05_iceberg_transforms.py

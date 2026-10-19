@@ -1,0 +1,93 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "enterprise-supply-chain-lakehouse"
+version = "1.0.0"
+description = "Enterprise Open Data Lakehouse Platform: Real-Time Streaming Ingestion, ACID Table Format & Distributed SQL Analytics"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Apache-2.0" }
+authors = [
+    { name = "Supply Chain Engineering Team" }
+]
+keywords = [
+    "data-lakehouse",
+    "apache-kafka",
+    "apache-spark",
+    "apache-iceberg",
+    "project-nessie",
+    "trino",
+    "fastapi",
+    "supply-chain",
+    "streaming"
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Information Technology",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Database",
+    "Topic :: System :: Distributed Computing"
+]
+dependencies = [
+    "pandas>=2.2.0",
+    "pyarrow>=16.0.0",
+    "numpy>=1.26.0",
+    "pyyaml>=6.0.0",
+    "confluent-kafka>=2.3.0",
+    "pyspark>=3.5.0",
+    "trino>=0.328.0",
+    "fastapi>=0.100.0",
+    "uvicorn>=0.23.0",
+    "pydantic>=2.0.0",
+    "jinja2>=3.1.0",
+    "requests>=2.31.0",
+    "python-dotenv>=1.0.0"
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-cov>=4.1.0",
+    "ruff>=0.4.0",
+    "black>=24.0.0"
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+exclude = [
+    ".git",
+    ".venv",
+    "__pycache__",
+    "build",
+    "dist"
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B"]
+ignore = ["E501"]  # line length handled by formatter
+
+[tool.pytest.ini_options]
+minversion = "7.0"
+addopts = "-ra -q --strict-markers"
+testpaths = [
+    "tests"
+]
+python_files = [
+    "test_*.py",
+    "*_test.py",
+    "validate_dataset.py",
+    "benchmark_suite.py"
+]
+
+[tool.black]
+line-length = 100
+target-version = ['py312']
+include = '\.pyi?$'

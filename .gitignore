@@ -1,5 +1,5 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# Enterprise Supply Chain Hub — Production .gitignore
+# Enterprise Open Data Lakehouse Platform — Production .gitignore
 # ─────────────────────────────────────────────────────────────────────────────
 
 # Python byte-compiled / optimized files
@@ -8,17 +8,36 @@ __pycache__/
 *$py.class
 *.so
 
-# Virtual environments
+# Virtual environments & package managers
 .venv/
 venv/
 ENV/
 env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
 
-# IDE and editors
+# IDE, editors & developer tools
 .vscode/
 .idea/
+.cursor/
 *.swp
 *.swo
+*~
+*.sublime-project
+*.sublime-workspace
 
 # Environment configurations & credentials
 .env
@@ -30,38 +49,51 @@ credentials/
 *.key
 *.pem
 
-# Data directories and data lake assets
+# Data directories, object storage & lakehouse local state
 data/
 spark-warehouse/
 spark-events/
+.localstack/
 
-# Spark streaming checkpoints and dependency caches
+# Spark streaming checkpoints, ivy caches & Windows winutils binaries
 **/checkpoints/
 **/.ivy2/
 conf/spark/jars/*.jar
+conf/spark/winutils/
+*.exe
+*.dll
 
-# Java crash logs & runtime error output
-hs_err_pid*.log
-*.err
-*.out
+# Runtime telemetry & metrics dumps
+**/metrics_iceberg.json
+
+# Automated tests, benchmarks & coverage
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+.coverage.*
+htmlcov/
+tests/output/*
+!tests/output/.gitkeep
+
+# Logs, crash dumps & runtime diagnostics
+*.log
 logs/
 dashboard/logs/*
 !dashboard/logs/.gitkeep
+hs_err_pid*.log
+*.err
+*.out
 
-# dbt artifacts
-dbt/target/
-dbt/dbt_packages/
-dbt/logs/
-target/
-
-# Power BI binaries and backups
+# Power BI local model caches & backups (track only .pbit / .pdf in assets/)
 *.tmp
 *.pbit.bak
 *.pbix.bak
 *.pbix
 
-# Operating system files
+# Operating system artifacts
 .DS_Store
 Thumbs.db
 ehthumbs.db
 Desktop.ini
+$RECYCLE.BIN/

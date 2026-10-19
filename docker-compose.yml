@@ -8,6 +8,7 @@ services:
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
+      KAFKA_HEAP_OPTS: "-Xmx256M -Xms128M"
     ports:
       - "2181:2181"
 
@@ -26,6 +27,8 @@ services:
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_HEAP_OPTS: "-Xmx512M -Xms512M"
+      KAFKA_JVM_PERFORMANCE_OPTS: "-server -XX:+UseG1GC -XX:MaxGCPauseMillis=20 -XX:InitiatingHeapOccupancyPercent=35"
 
   # ----------------------------------------------------
   # 2. LOCALSTACK (S3 Object Storage for Data Lake)
@@ -35,6 +38,7 @@ services:
     container_name: s3
     environment:
       - SERVICES=s3
+      - LS_LOG=warn
     ports:
       - "4566:4566"
     volumes:
@@ -46,6 +50,8 @@ services:
   nessie:
     image: projectnessie/nessie:latest
     container_name: nessie
+    environment:
+      - JAVA_OPTS=-Xmx384m
     ports:
       - "19120:19120"
 
@@ -64,13 +70,14 @@ services:
       - nessie
 
   # ----------------------------------------------------
-  # 5. SPARK MASTER (Stream Processing)
+  # 5. SPARK ENGINE (Stream & Batch Compute)
   # ----------------------------------------------------
   spark-master:
     image: apache/spark:3.5.9-scala2.12-java11-python3-r-ubuntu
     container_name: spark-master
     environment:
       - SPARK_MASTER_HOST=spark-master
+      - SPARK_DAEMON_MEMORY=256m
       - AWS_REGION=us-east-1
       - AWS_ACCESS_KEY_ID=test
       - AWS_SECRET_ACCESS_KEY=test
@@ -81,18 +88,3 @@ services:
       - ./pyspark_jobs:/opt/spark/work-dir
     command: /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master
 
-  # ----------------------------------------------------
-  # 6. SPARK WORKER (Horizontal Scaling)
-  # ----------------------------------------------------
-  spark-worker-1:
-    image: apache/spark:3.5.9-scala2.12-java11-python3-r-ubuntu
-    container_name: spark-worker-1
-    depends_on:
-      - spark-master
-    environment:
-      - AWS_REGION=us-east-1
-      - AWS_ACCESS_KEY_ID=test
-      - AWS_SECRET_ACCESS_KEY=test
-    volumes:
-      - ./pyspark_jobs:/opt/spark/work-dir
-    command: /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077

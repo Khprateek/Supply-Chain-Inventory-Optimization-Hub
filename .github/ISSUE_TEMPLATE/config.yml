@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 📖 Architectural Documentation & FAQ
+    url: https://github.com/
+    about: Read our technical specifications and architecture diagrams in docs/

@@ -137,7 +137,7 @@ Verify each exists in your model before building visuals. Paste only if missing.
 
 ---
 
-#### From [`sales_measures.dax`](file:///d:/JOB/1.Buid_Skill/Work/Enterprise%20Supply%20Chain%20%26%20Inventory%20Optimization%20Hub/powerbi/measures/sales_measures.dax) — host table: `FactSales`
+#### From [`sales_measures.dax`](../../powerbi/measures/sales_measures.dax) — host table: `FactSales`
 
 ```dax
 -- ✅ EXISTING | Table: FactSales | Folder: Sales\Volume
@@ -147,7 +147,7 @@ SUM(FactSales[OrderedQuantity])
 
 ---
 
-#### From [`inventory_measures.dax`](file:///d:/JOB/1.Buid_Skill/Work/Enterprise%20Supply%20Chain%20%26%20Inventory%20Optimization%20Hub/powerbi/measures/inventory_measures.dax) — host table: `FactInventorySnapshot`
+#### From [`inventory_measures.dax`](../../powerbi/measures/inventory_measures.dax) — host table: `FactInventorySnapshot`
 
 ```dax
 -- ✅ EXISTING | Table: FactInventorySnapshot | Folder: Inventory\Valuation
@@ -161,7 +161,7 @@ AVERAGEX(
 
 ---
 
-#### From [`sku_optimization_measures.dax`](file:///d:/JOB/1.Buid_Skill/Work/Enterprise%20Supply%20Chain%20%26%20Inventory%20Optimization%20Hub/powerbi/measures/sku_optimization_measures.dax) — host table: `DimProduct`
+#### From [`sku_optimization_measures.dax`](../../powerbi/measures/sku_optimization_measures.dax) — host table: `DimProduct`
 
 ```dax
 -- ✅ EXISTING | Table: DimProduct | Folder: SKU Optimization
@@ -227,7 +227,7 @@ Reorder Point Units =
 
 ---
 
-#### From [`working_capital_measures.dax`](file:///d:/JOB/1.Buid_Skill/Work/Enterprise%20Supply%20Chain%20%26%20Inventory%20Optimization%20Hub/powerbi/measures/working_capital_measures.dax) — host table: `DimScenario`
+#### From [`working_capital_measures.dax`](../../powerbi/measures/working_capital_measures.dax) — host table: `DimScenario`
 
 ```dax
 -- ✅ EXISTING | Table: DimScenario | Folder: Working Capital
@@ -741,18 +741,18 @@ After building all measures and setting up Bookmarks (§10), verify by loading e
 
 | Measure | File | Used For on Page 7 |
 |:---|:---|:---|
-| `[Simulated Dynamic Safety Stock Units]` | [`simulation_measures.dax`](file:///d:/JOB/1.Buid_Skill/Work/Enterprise%20Supply%20Chain%20%26%20Inventory%20Optimization%20Hub/powerbi/measures/simulation_measures.dax) | Card 1 value |
+| `[Simulated Dynamic Safety Stock Units]` | [`simulation_measures.dax`](../../powerbi/measures/simulation_measures.dax) | Card 1 value |
 | `[Simulated Reorder Point Units]` | `simulation_measures.dax` | Card 3 value |
 | `[Scenario Demand Multiplier]` | `simulation_measures.dax` | Referenced by new measures |
 | `[Scenario Lead Time Shock Days]` | `simulation_measures.dax` | Referenced by new measures |
-| `[Safety Stock Units]` | [`sku_optimization_measures.dax`](file:///d:/JOB/1.Buid_Skill/Work/Enterprise%20Supply%20Chain%20%26%20Inventory%20Optimization%20Hub/powerbi/measures/sku_optimization_measures.dax) | Baseline anchor for delta measures |
+| `[Safety Stock Units]` | [`sku_optimization_measures.dax`](../../powerbi/measures/sku_optimization_measures.dax) | Baseline anchor for delta measures |
 | `[Reorder Point Units]` | `sku_optimization_measures.dax` | Baseline anchor for ROP delta |
 | `[Average Daily Demand Units]` | `sku_optimization_measures.dax` | Demand component of King's formula |
 | `[Average Actual Lead Time Days]` | `sku_optimization_measures.dax` | LT component of King's formula |
-| `[Annual Inventory Carrying Cost]` | [`working_capital_measures.dax`](file:///d:/JOB/1.Buid_Skill/Work/Enterprise%20Supply%20Chain%20%26%20Inventory%20Optimization%20Hub/powerbi/measures/working_capital_measures.dax) | Baseline carrying cost anchor |
+| `[Annual Inventory Carrying Cost]` | [`working_capital_measures.dax`](../../powerbi/measures/working_capital_measures.dax) | Baseline carrying cost anchor |
 | `[Annual Carrying Cost Rate]` | `working_capital_measures.dax` | Baseline rate denominator |
-| `[Average Daily Inventory Valuation]` | [`inventory_measures.dax`](file:///d:/JOB/1.Buid_Skill/Work/Enterprise%20Supply%20Chain%20%26%20Inventory%20Optimization%20Hub/powerbi/measures/inventory_measures.dax) | Used in valuation scaling |
-| `[Total Ordered Quantity]` | [`sales_measures.dax`](file:///d:/JOB/1.Buid_Skill/Work/Enterprise%20Supply%20Chain%20%26%20Inventory%20Optimization%20Hub/powerbi/measures/sales_measures.dax) | Demand total for simulated demand |
+| `[Average Daily Inventory Valuation]` | [`inventory_measures.dax`](../../powerbi/measures/inventory_measures.dax) | Used in valuation scaling |
+| `[Total Ordered Quantity]` | [`sales_measures.dax`](../../powerbi/measures/sales_measures.dax) | Demand total for simulated demand |
 
 ---
 

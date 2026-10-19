@@ -1,10 +1,17 @@
 # 🧪 Automated Testing & Verification Suite
 
-This directory contains automated test suites, quality assertions, and integration tests for the **Enterprise Open Data Lakehouse Platform**.
+This directory contains automated test suites, engineering benchmarks, quality assertions, and integration tests for the **Enterprise Open Data Lakehouse Platform**.
 
 ---
 
 ## 📋 Test Catalog
+
+- **`benchmark_suite.py`**: Comprehensive 5-stage engineering benchmark harness executing **Performance Testing**, **Stress Testing**, **Resilience Testing**, **Capacity Testing**, and **Scalability Testing** across Kafka, PySpark, Iceberg, Nessie, and Trino.
+  - 📄 See **[`docs/BENCHMARK_AND_TESTING_SUITE.md`](../docs/BENCHMARK_AND_TESTING_SUITE.md)** for full mathematical derivations and test specifications.
+  ```powershell
+  # Run all 5 benchmark tests and generate JSON report
+  python tests/benchmark_suite.py --test all
+  ```
 
 - **`validate_dataset.py`**: Automated data quality, nullability, referential integrity, and business logic verification suite for Parquet datasets.
   ```powershell

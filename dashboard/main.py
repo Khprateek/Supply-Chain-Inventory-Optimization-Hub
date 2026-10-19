@@ -24,9 +24,9 @@ processes: Dict[str, subprocess.Popen] = {}
 _proc_lock = threading.Lock()
 
 COMMANDS = {
-    "generator": [VENV_PYTHON, os.path.join(PROJECT_ROOT, "scripts", "kafka_data_generator.py"), "--workers", "1", "--rate", "100"],
+    "generator": [VENV_PYTHON, os.path.join(PROJECT_ROOT, "scripts", "kafka_data_generator.py"), "--workers", "2"],
     "stream_iceberg": [os.path.join(PROJECT_ROOT, "scripts", "run_iceberg_stream.cmd")],
-    "transform_iceberg": [os.path.join(PROJECT_ROOT, "scripts", "run_iceberg_transform.cmd")],
+    "transform_iceberg": [os.path.join(PROJECT_ROOT, "scripts", "run_iceberg_batch_transform.cmd")],
     "maintenance_iceberg": [os.path.join(PROJECT_ROOT, "scripts", "run_iceberg_maintenance.cmd")],
 }
 
@@ -114,7 +114,7 @@ def manage_process(process_id: str, action: str):
                     elif "maintenance" in process_id:
                         target_script = "06_iceberg_maintenance.py"
                     else:
-                        target_script = "06_iceberg_transform.py"
+                        target_script = "05_iceberg_transforms.py"
 
                     subprocess.run(["docker", "exec", "spark-master", "pkill", "-f", target_script],
                                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)

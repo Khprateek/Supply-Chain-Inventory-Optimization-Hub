@@ -1,0 +1,53 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Git Attributes — Enterprise Open Data Lakehouse Platform
+# Line ending normalization and binary file tracking
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Default auto-normalization to LF for all text files
+* text=auto eol=lf
+
+# Explicit text files (LF on all platforms)
+*.py text eol=lf
+*.sh text eol=lf
+*.sql text eol=lf
+*.md text eol=lf
+*.txt text eol=lf
+*.json text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.html text eol=lf
+*.css text eol=lf
+*.js text eol=lf
+*.properties text eol=lf
+*.dax text eol=lf
+*.toml text eol=lf
+*.ini text eol=lf
+.editorconfig text eol=lf
+.gitignore text eol=lf
+.gitattributes text eol=lf
+.env.example text eol=lf
+Makefile text eol=lf
+
+# Windows command / batch scripts (CRLF required on Windows)
+*.cmd text eol=crlf
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+
+# Binary formats (prevent git corruption or diff attempts)
+*.pbit binary
+*.pbix binary
+*.pdf binary
+*.jar binary
+*.exe binary
+*.dll binary
+*.so binary
+*.dylib binary
+*.parquet binary
+*.gz binary
+*.zip binary
+*.tar binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary

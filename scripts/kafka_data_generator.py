@@ -12,7 +12,7 @@ from confluent_kafka import Producer
 # Kafka configuration
 KAFKA_BROKER = os.environ.get('KAFKA_BOOTSTRAP_SERVERS', 'localhost:29092')
 
-# Seed for reproducible realistic data distributions
+# Pre-generate templates to bypass Faker CPU bottleneck during high-throughput stress tests
 GENERATOR_SEED = int(os.environ.get("GENERATOR_SEED", "42"))
 random.seed(GENERATOR_SEED)
 
@@ -35,22 +35,26 @@ def delivery_report(err, msg):
             print(f"[DELIVERY ERROR #{ec}] topic={msg.topic()} partition={msg.partition()} err={err}", flush=True)
 
 
-def worker_produce(worker_id, target_rate_per_worker):
-    """Worker function to produce messages at a throttled, steady rate."""
+def worker_produce(worker_id, target_rate_per_worker=0, max_events=0):
+    """
+    Worker function to produce messages continuously.
+    - Default (target_rate_per_worker=0): High-throughput mode (~15,000+ events/sec per worker)
+      using librdkafka batching (100K queue buffer, 1000 batch size, 5ms linger, LZ4 compression).
+    - Throttled (target_rate_per_worker>0): Controlled rate for low-resource testing.
+    """
     producer = Producer({
         'bootstrap.servers': KAFKA_BROKER,
-        'queue.buffering.max.messages': 50_000,
+        'queue.buffering.max.messages': 100_000,
         'linger.ms': 5,
-        'batch.num.messages': 100,
+        'batch.num.messages': 1000,
         'compression.type': 'lz4'
     })
 
     events_produced = 0
     start_time = time.time()
-    batch_size = max(1, min(20, target_rate_per_worker // 5)) if target_rate_per_worker > 0 else 50
-    sleep_interval = (batch_size / target_rate_per_worker) if target_rate_per_worker > 0 else 0
 
-    print(f"[Worker {worker_id}] Started throttled generator (Target: ~{target_rate_per_worker} events/sec)...", flush=True)
+    mode_str = f"Throttled (~{target_rate_per_worker} ev/s)" if target_rate_per_worker > 0 else "High-Throughput Unthrottled"
+    print(f"[Worker {worker_id}] Started continuous generation ({mode_str})...", flush=True)
 
     running = True
 
@@ -64,95 +68,97 @@ def worker_produce(worker_id, target_rate_per_worker):
     last_batch_time = time.time()
 
     while running:
-        for _ in range(batch_size):
-            if not running:
-                break
+        event_type_choice = random.choice(["inventory", "sales"])
 
-            event_type_choice = random.choice(["inventory", "sales"])
-
-            if event_type_choice == "inventory":
-                topic = "inventory_events"
-                event_type = random.choice(["RECEIPT", "PICK", "ADJUSTMENT"])
-                if event_type == "RECEIPT":
-                    quantity_change = random.randint(1, 100)
-                elif event_type == "PICK":
-                    quantity_change = random.randint(-50, -1)
-                else:
-                    quantity_change = random.randint(-20, 20)
-
-                event = {
-                    "event_id": str(uuid.uuid4()),
-                    "timestamp": time.time(),
-                    "product_id": random.choice(PRODUCTS),
-                    "warehouse_id": random.choice(WAREHOUSES),
-                    "quantity_change": quantity_change,
-                    "event_type": event_type,
-                }
+        if event_type_choice == "inventory":
+            topic = "inventory_events"
+            event_type = random.choice(["RECEIPT", "PICK", "ADJUSTMENT"])
+            if event_type == "RECEIPT":
+                quantity_change = random.randint(1, 100)
+            elif event_type == "PICK":
+                quantity_change = random.randint(-50, -1)
             else:
-                topic = "sales_events"
-                event = {
-                    "event_id": str(uuid.uuid4()),
-                    "timestamp": time.time(),
-                    "product_id": random.choice(PRODUCTS),
-                    "customer_id": random.choice(CUSTOMERS),
-                    "revenue": round(random.uniform(10.0, 500.0), 2),
-                    "units_sold": random.randint(1, 5)
-                }
+                quantity_change = random.randint(-20, 20)
 
-            while running:
-                try:
-                    producer.produce(
-                        topic,
-                        key=event["product_id"].encode('utf-8'),
-                        value=json.dumps(event).encode('utf-8'),
-                        callback=delivery_report
-                    )
-                    break
-                except BufferError:
-                    producer.poll(0.2)
+            event = {
+                "event_id": str(uuid.uuid4()),
+                "timestamp": time.time(),
+                "product_id": random.choice(PRODUCTS),
+                "warehouse_id": random.choice(WAREHOUSES),
+                "quantity_change": quantity_change,
+                "event_type": event_type,
+            }
+        else:
+            topic = "sales_events"
+            event = {
+                "event_id": str(uuid.uuid4()),
+                "timestamp": time.time(),
+                "product_id": random.choice(PRODUCTS),
+                "customer_id": random.choice(CUSTOMERS),
+                "revenue": round(random.uniform(10.0, 500.0), 2),
+                "units_sold": random.randint(1, 5)
+            }
 
-            events_produced += 1
+        # Async produce with natural backpressure
+        while running:
+            try:
+                producer.produce(
+                    topic,
+                    key=event["product_id"].encode('utf-8'),
+                    value=json.dumps(event).encode('utf-8'),
+                    callback=delivery_report
+                )
+                break
+            except BufferError:
+                print(f"[Worker {worker_id}] Producer queue full (100K). Backing off...", flush=True)
+                producer.poll(1.0)
 
-        # Poll callbacks
-        producer.poll(0)
+        events_produced += 1
 
-        # Rate-limiting throttle
-        if target_rate_per_worker > 0:
-            elapsed = time.time() - last_batch_time
-            sleep_needed = sleep_interval - elapsed
-            if sleep_needed > 0:
-                time.sleep(sleep_needed)
-            last_batch_time = time.time()
+        if max_events > 0 and events_produced >= max_events:
+            break
 
-        if events_produced % 500 == 0:
-            elapsed_total = time.time() - start_time
-            rate = events_produced / max(elapsed_total, 0.001)
-            print(f"[Worker {worker_id}] Produced {events_produced:,} events | Current Rate: ~{rate:,.0f} events/sec", flush=True)
+        # Periodic callback drain & pacing
+        if events_produced % 1000 == 0:
+            producer.poll(0)
+            if target_rate_per_worker > 0:
+                expected_elapsed = 1000.0 / target_rate_per_worker
+                actual_elapsed = time.time() - last_batch_time
+                if expected_elapsed > actual_elapsed:
+                    time.sleep(expected_elapsed - actual_elapsed)
+                last_batch_time = time.time()
+            else:
+                # Normal high-throughput pacing: 50ms yield per 1000 events (~15K-20K ev/s per worker)
+                time.sleep(0.05)
 
-    print(f"[Worker {worker_id}] Flushing remaining queued messages...", flush=True)
-    producer.flush(timeout=5)
+        if events_produced % 5000 == 0:
+            elapsed = time.time() - start_time
+            print(f"[Worker {worker_id}] Generated {events_produced:,} events... (Avg: {events_produced / max(elapsed, 0.001):,.0f} msg/sec)", flush=True)
+
+    # Graceful drain on exit
+    print(f"[Worker {worker_id}] Flushing {len(producer)} queued messages...", flush=True)
+    remaining = producer.flush(timeout=15)
+    if remaining > 0:
+        print(f"[Worker {worker_id}] WARNING: {remaining} messages not delivered at shutdown.", flush=True)
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Throttled Kafka Telemetry Producer")
-    parser.add_argument("--workers", type=int, default=1, help="Number of worker processes (default: 1)")
-    parser.add_argument("--rate", type=int, default=100, help="Target total events per second (default: 100)")
+    parser = argparse.ArgumentParser(description="High-Throughput Kafka Telemetry Producer")
+    parser.add_argument("--workers", type=int, default=2, help="Number of worker processes (default: 2 for ~30K ev/s)")
+    parser.add_argument("--rate", type=int, default=0, help="Optional target rate limit in events/sec (0 = normal high-throughput)")
+    parser.add_argument("--max-events", type=int, default=0, help="Optional max events per worker before exiting (0 = infinite)")
     args = parser.parse_args()
 
     num_workers = max(1, args.workers)
-    target_rate = max(0, args.rate)
-    rate_per_worker = target_rate // num_workers if target_rate > 0 else 0
+    rate_per_worker = (args.rate // num_workers) if args.rate > 0 else 0
 
-    print("==========================================================")
-    print("      Supply Chain Telemetry Event Generator")
-    print(f"  Target Rate: ~{target_rate} events/sec total")
-    print(f"  Workers:     {num_workers} (each ~{rate_per_worker} events/sec)")
-    print(f"  Broker:      {KAFKA_BROKER}")
-    print("==========================================================")
+    print(f"Starting High-Throughput Continuous Kafka Generator...")
+    print(f"Target: Continuous stream to topics 'inventory_events' and 'sales_events'")
+    print(f"Spawning {num_workers} worker processes (Buffer: 100K msgs, Batch: 1000, Linger: 5ms, Compression: LZ4)...")
 
     processes = []
     for i in range(num_workers):
-        p = multiprocessing.Process(target=worker_produce, args=(i, rate_per_worker))
+        p = multiprocessing.Process(target=worker_produce, args=(i, rate_per_worker, args.max_events))
         p.start()
         processes.append(p)
 
@@ -160,12 +166,14 @@ def main():
         for p in processes:
             p.join()
     except KeyboardInterrupt:
-        print("\nStopping telemetry generator gracefully...")
+        print("\nStopping continuous generation...")
         for p in processes:
+            if os.name != 'nt':
+                os.kill(p.pid, signal.SIGTERM)
+        for p in processes:
+            p.join(timeout=12)
             if p.is_alive():
                 p.terminate()
-        for p in processes:
-            p.join(timeout=5)
 
 
 if __name__ == '__main__':

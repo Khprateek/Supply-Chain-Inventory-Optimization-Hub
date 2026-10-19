@@ -4,13 +4,9 @@ from pyspark.sql import SparkSession
 from pyspark.sql.functions import col, sum as _sum, count as _count, window, date_trunc
 
 # Setup Spark with Iceberg and Nessie
+# Packages are provided via spark-submit (--packages), avoiding duplicate Ivy resolution
 spark = SparkSession.builder \
     .appName("Iceberg-Batch-Transform") \
-    .config("spark.jars.packages", 
-            "org.apache.iceberg:iceberg-spark-runtime-3.5_2.12:1.5.0,"
-            "org.projectnessie.nessie-integrations:nessie-spark-extensions-3.5_2.12:0.77.1,"
-            "software.amazon.awssdk:bundle:2.20.18,"
-            "software.amazon.awssdk:url-connection-client:2.20.18") \
     .config("spark.sql.extensions", "org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions,org.projectnessie.spark.extensions.NessieSparkSessionExtensions") \
     .config("spark.sql.catalog.nessie", "org.apache.iceberg.spark.SparkCatalog") \
     .config("spark.sql.catalog.nessie.catalog-impl", "org.apache.iceberg.nessie.NessieCatalog") \
