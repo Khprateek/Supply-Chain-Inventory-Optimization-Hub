@@ -33,7 +33,7 @@ jobs:
       - name: Lint with Ruff
         run: |
           # Fail if there are syntax errors or undefined names
-          ruff check . --select=E9,F63,F7,F82 --show-source
+          ruff check . --select=E9,F63,F7,F82
           # Report all other informational lints without failing build
           ruff check . --exit-zero
 
