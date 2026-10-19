@@ -13,7 +13,7 @@ confluent-kafka>=2.3.0
 # ── Distributed Stream & Batch Processing (Apache Spark) ──────────────────
 # PySpark 4.0.x — full Python 3.12 compatibility
 # Requires Java 8, 11, 17, or 21 (LTS)
-pyspark==4.0.4
+pyspark==4.2.0
 
 # ── Lakehouse Query Engine ────────────────────────────────────────────────
 trino>=0.328.0
