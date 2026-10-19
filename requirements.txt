@@ -2,7 +2,7 @@
 # Python 3.12+
 
 # ── Core Data & Telemetry Generation ──────────────────────────────────────
-pandas==2.2.2
+pandas==2.3.3
 pyarrow==16.1.0
 numpy==2.4.3
 pyyaml==6.0.3
