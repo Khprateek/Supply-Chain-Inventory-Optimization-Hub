@@ -1,10 +1,11 @@
-import os
-import time
 import json
+import os
 import threading
-from fastapi import APIRouter
+import time
+
 import trino
 from confluent_kafka import Consumer, TopicPartition
+from fastapi import APIRouter
 
 router = APIRouter()
 
@@ -18,10 +19,7 @@ TRINO_SCHEMA_MART = "marts"
 TRINO_TABLE_MART = "fact_sales_summary"
 
 # Keep track of previous counts for ingestion speed calculation
-speed_metrics = {
-    "iceberg_rows": 0,
-    "iceberg_timestamp": 0
-}
+speed_metrics = {"iceberg_rows": 0, "iceberg_timestamp": 0}
 _speed_metrics_lock = threading.Lock()
 
 
@@ -41,13 +39,16 @@ def get_mart_metrics():
     cursor = None
     try:
         conn = trino.dbapi.connect(
-            host=TRINO_HOST, port=TRINO_PORT, user=TRINO_USER,
-            catalog=TRINO_CATALOG, schema=TRINO_SCHEMA_MART,
-            http_scheme='http'
+            host=TRINO_HOST,
+            port=TRINO_PORT,
+            user=TRINO_USER,
+            catalog=TRINO_CATALOG,
+            schema=TRINO_SCHEMA_MART,
+            http_scheme="http",
         )
         cursor = conn.cursor()
         query = f"""
-        SELECT 
+        SELECT
             SUM(total_revenue) as total_revenue,
             SUM(total_units_sold) as total_units_sold,
             SUM(transaction_count) as total_transactions
@@ -59,17 +60,21 @@ def get_mart_metrics():
             result["iceberg"] = {
                 "total_revenue": round(float(row[0] or 0), 2),
                 "total_units_sold": int(row[1] or 0),
-                "total_transactions": int(row[2] or 0)
+                "total_transactions": int(row[2] or 0),
             }
     except Exception as e:
         result["iceberg"]["error"] = str(e)
     finally:
         if cursor:
-            try: cursor.close()
-            except Exception: pass
+            try:
+                cursor.close()
+            except Exception:
+                pass
         if conn:
-            try: conn.close()
-            except Exception: pass
+            try:
+                conn.close()
+            except Exception:
+                pass
 
     return result
 
@@ -78,22 +83,17 @@ def get_mart_metrics():
 def get_live_metrics():
     """Retrieve live row counts and real-time ingestion rates for Iceberg tables."""
     global speed_metrics
-    result = {
-        "iceberg": {
-            "total_rows": 0,
-            "rows_per_sec": 0,
-            "sales_rows": 0,
-            "inventory_rows": 0
-        }
-    }
+    result = {"iceberg": {"total_rows": 0, "rows_per_sec": 0, "sales_rows": 0, "inventory_rows": 0}}
 
     conn = None
     cursor = None
     try:
         conn = trino.dbapi.connect(
-            host=TRINO_HOST, port=TRINO_PORT, user=TRINO_USER,
+            host=TRINO_HOST,
+            port=TRINO_PORT,
+            user=TRINO_USER,
             catalog=TRINO_CATALOG,
-            http_scheme='http'
+            http_scheme="http",
         )
         cursor = conn.cursor()
         total_ice_rows = 0
@@ -126,7 +126,9 @@ def get_live_metrics():
             current_time = time.time()
             dt = current_time - speed_metrics["iceberg_timestamp"]
             if dt > 0 and speed_metrics["iceberg_timestamp"] > 0:
-                result["iceberg"]["rows_per_sec"] = max(0, int((total_ice_rows - speed_metrics["iceberg_rows"]) / dt))
+                result["iceberg"]["rows_per_sec"] = max(
+                    0, int((total_ice_rows - speed_metrics["iceberg_rows"]) / dt)
+                )
 
             speed_metrics["iceberg_rows"] = total_ice_rows
             speed_metrics["iceberg_timestamp"] = current_time
@@ -134,19 +136,204 @@ def get_live_metrics():
         result["iceberg"]["error"] = str(e)
     finally:
         if cursor:
-            try: cursor.close()
-            except Exception: pass
+            try:
+                cursor.close()
+            except Exception:
+                pass
         if conn:
-            try: conn.close()
-            except Exception: pass
+            try:
+                conn.close()
+            except Exception:
+                pass
 
     return result
 
 
-kafka_metrics_state = {
-    "topics": {},
-    "timestamp": 0
-}
+@router.get("/metrics/inventory_health")
+def get_inventory_health():
+    """Retrieve Gold-tier Inventory Health & Stockout Risk telemetry from Trino."""
+    result = {
+        "summary": {
+            "total_skus": 0,
+            "critical_stockouts": 0,
+            "low_stock_warnings": 0,
+            "optimal": 0,
+        },
+        "top_risks": [],
+    }
+
+    conn = None
+    cursor = None
+    try:
+        conn = trino.dbapi.connect(
+            host=TRINO_HOST,
+            port=TRINO_PORT,
+            user=TRINO_USER,
+            catalog=TRINO_CATALOG,
+            schema=TRINO_SCHEMA_MART,
+            http_scheme="http",
+        )
+        cursor = conn.cursor()
+
+        # 1. Summary counts across risk statuses
+        try:
+            cursor.execute("""
+                SELECT
+                    COUNT(*) as total_skus,
+                    COUNT(CASE WHEN stockout_risk_status = 'CRITICAL_STOCKOUT' THEN 1 END) as critical_count,
+                    COUNT(CASE WHEN stockout_risk_status = 'LOW_STOCK_WARNING' THEN 1 END) as warning_count,
+                    COUNT(CASE WHEN stockout_risk_status = 'OPTIMAL' THEN 1 END) as optimal_count
+                FROM fact_inventory_health
+            """)
+            sum_row = cursor.fetchone()
+            if sum_row and sum_row[0] is not None:
+                result["summary"] = {
+                    "total_skus": int(sum_row[0] or 0),
+                    "critical_stockouts": int(sum_row[1] or 0),
+                    "low_stock_warnings": int(sum_row[2] or 0),
+                    "optimal": int(sum_row[3] or 0),
+                }
+        except Exception:
+            pass
+
+        # 2. Priority items ordered by risk
+        try:
+            cursor.execute("""
+                SELECT
+                    warehouse_id,
+                    product_id,
+                    current_on_hand,
+                    daily_turnover_rate,
+                    days_of_supply,
+                    stockout_risk_status
+                FROM fact_inventory_health
+                ORDER BY
+                    CASE
+                        WHEN stockout_risk_status = 'CRITICAL_STOCKOUT' THEN 1
+                        WHEN stockout_risk_status = 'LOW_STOCK_WARNING' THEN 2
+                        ELSE 3
+                    END,
+                    days_of_supply ASC
+                LIMIT 10
+            """)
+            for r in cursor.fetchall():
+                result["top_risks"].append(
+                    {
+                        "warehouse_id": r[0],
+                        "product_id": r[1],
+                        "current_on_hand": int(r[2] or 0),
+                        "daily_turnover_rate": float(r[3] or 0.0),
+                        "days_of_supply": float(r[4] or 0.0),
+                        "status": r[5],
+                    }
+                )
+        except Exception:
+            pass
+    except Exception as e:
+        result["error"] = str(e)
+    finally:
+        if cursor:
+            try:
+                cursor.close()
+            except Exception:
+                pass
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+    return result
+
+
+@router.get("/metrics/dlq")
+def get_dlq_metrics():
+    """Retrieve Dead-Letter Queue (DLQ) quarantine counts and recent poison pills."""
+    result = {
+        "total_quarantined": 0,
+        "sales_dlq_count": 0,
+        "inventory_dlq_count": 0,
+        "recent_events": [],
+    }
+
+    conn = None
+    cursor = None
+    try:
+        conn = trino.dbapi.connect(
+            host=TRINO_HOST,
+            port=TRINO_PORT,
+            user=TRINO_USER,
+            catalog=TRINO_CATALOG,
+            http_scheme="http",
+        )
+        cursor = conn.cursor()
+
+        # Count sales DLQ
+        try:
+            cursor.execute("SELECT COUNT(*) FROM sales.dlq_events")
+            r = cursor.fetchone()
+            if r and r[0] is not None:
+                result["sales_dlq_count"] = int(r[0])
+        except Exception:
+            pass
+
+        # Count inventory DLQ
+        try:
+            cursor.execute("SELECT COUNT(*) FROM inventory.dlq_events")
+            r = cursor.fetchone()
+            if r and r[0] is not None:
+                result["inventory_dlq_count"] = int(r[0])
+        except Exception:
+            pass
+
+        result["total_quarantined"] = result["sales_dlq_count"] + result["inventory_dlq_count"]
+
+        # Fetch recent quarantine events across sales DLQ
+        try:
+            cursor.execute("""
+                SELECT
+                    CAST(quarantined_at AS VARCHAR),
+                    topic,
+                    partition,
+                    offset,
+                    error_reason,
+                    raw_payload
+                FROM sales.dlq_events
+                ORDER BY quarantined_at DESC
+                LIMIT 5
+            """)
+            for row in cursor.fetchall():
+                payload = row[5] or ""
+                result["recent_events"].append(
+                    {
+                        "quarantined_at": row[0],
+                        "topic": row[1],
+                        "partition": row[2],
+                        "offset": row[3],
+                        "error_reason": row[4],
+                        "raw_payload": (payload[:75] + "...") if len(payload) > 75 else payload,
+                    }
+                )
+        except Exception:
+            pass
+    except Exception as e:
+        result["error"] = str(e)
+    finally:
+        if cursor:
+            try:
+                cursor.close()
+            except Exception:
+                pass
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+    return result
+
+
+kafka_metrics_state = {"topics": {}, "timestamp": 0}
 
 
 @router.get("/metrics/kafka")
@@ -161,19 +348,25 @@ def get_kafka_metrics():
     consumer = None
 
     try:
-        consumer = Consumer({
-            "bootstrap.servers": "localhost:29092",
-            "group.id": "dashboard-metric-reader",
-            "enable.auto.commit": False,
-            "auto.offset.reset": "latest",
-            "socket.timeout.ms": 2000
-        })
+        consumer = Consumer(
+            {
+                "bootstrap.servers": "localhost:29092",
+                "group.id": "dashboard-metric-reader",
+                "enable.auto.commit": False,
+                "auto.offset.reset": "latest",
+                "socket.timeout.ms": 2000,
+            }
+        )
         total_rate = 0
         for topic in ["sales_events", "inventory_events"]:
             md = consumer.list_topics(topic, timeout=1.5)
             if md and topic in md.topics:
                 t = md.topics[topic]
-                result["topics"][topic] = {"partitions": len(t.partitions), "events_sec": 0, "total_events": 0}
+                result["topics"][topic] = {
+                    "partitions": len(t.partitions),
+                    "events_sec": 0,
+                    "total_events": 0,
+                }
 
                 # Retrieve partition high watermarks without reading payload
                 partitions = [TopicPartition(topic, p) for p in t.partitions]

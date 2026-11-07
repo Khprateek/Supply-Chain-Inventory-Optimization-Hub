@@ -54,7 +54,7 @@
     </header>
 
     <!-- Top KPI Strip -->
-    <div class="grid grid-cols-5 gap-4 mb-4 shrink-0">
+    <div class="grid grid-cols-6 gap-3 mb-4 shrink-0">
         <div class="card p-3 bg-slate-900/70 border-slate-800 flex flex-col justify-between">
             <div class="metric-label text-cyan-400">Kafka Production Rate</div>
             <div class="flex items-baseline justify-between mt-1">
@@ -88,6 +88,13 @@
             <div class="flex items-baseline justify-between mt-1">
                 <span id="kpi-gold-revenue" class="metric-value text-amber-300">$0.00</span>
                 <span id="kpi-gold-txns" class="text-xs text-slate-500 font-mono">0 txns</span>
+            </div>
+        </div>
+        <div class="card p-3 bg-slate-900/70 border-slate-800 flex flex-col justify-between">
+            <div class="metric-label text-rose-400">Stockout Risk Alerts</div>
+            <div class="flex items-baseline justify-between mt-1">
+                <span id="kpi-stockout-risk" class="metric-value text-rose-300">0</span>
+                <span class="text-xs text-slate-500 font-mono">critical SKUs</span>
             </div>
         </div>
     </div>
@@ -193,6 +200,19 @@
                         </div>
                     </div>
                 </div>
+
+                <!-- Streaming Dead-Letter Queue (DLQ) Quarantine Status -->
+                <div class="mt-3 pt-2.5 border-t border-slate-800/80 flex justify-between items-center bg-slate-950/40 p-2.5 rounded-lg border border-slate-800/60">
+                    <div class="flex items-center space-x-3">
+                        <span class="text-xs font-semibold text-slate-300 font-mono flex items-center">
+                            <span id="dlq-dot" class="status-dot healthy"></span> Streaming Dead-Letter Queue (DLQ):
+                        </span>
+                        <span id="dlq-status-badge" class="text-[11px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded border border-slate-700 font-mono">0 Quarantined</span>
+                    </div>
+                    <div class="text-[11px] text-slate-400 font-mono">
+                        Sales DLQ: <span id="dlq-sales-count" class="text-slate-200 font-semibold">0</span> · Inv DLQ: <span id="dlq-inv-count" class="text-slate-200 font-semibold">0</span>
+                    </div>
+                </div>
             </div>
 
             <!-- Down Arrow 2 -->
@@ -251,6 +271,47 @@
                         <div class="mt-2 pt-1 border-t border-slate-800 text-[10px] text-slate-500 font-mono">
                             Zero-copy Iceberg metadata reads
                         </div>
+                    </div>
+                </div>
+
+                <!-- Supply Chain Optimization: Inventory Health & Stockout Risk Radar -->
+                <div class="mt-4 pt-3 border-t border-slate-800">
+                    <div class="flex justify-between items-center mb-2.5">
+                        <div class="flex items-center space-x-2">
+                            <span class="text-amber-400 font-bold text-xs uppercase tracking-wider bg-amber-950/80 px-2 py-0.5 rounded border border-amber-800/40">Supply Chain Optimization</span>
+                            <h4 class="font-bold text-white text-sm">Inventory Health & Stockout Risk Radar</h4>
+                        </div>
+                        <div class="flex items-center space-x-2 text-xs">
+                            <span class="px-2 py-0.5 rounded bg-red-950/80 text-red-300 border border-red-800/50 text-[10px] font-mono">
+                                Critical: <span id="inv-count-critical" class="font-bold">0</span>
+                            </span>
+                            <span class="px-2 py-0.5 rounded bg-yellow-950/80 text-yellow-300 border border-yellow-800/50 text-[10px] font-mono">
+                                Warning: <span id="inv-count-warning" class="font-bold">0</span>
+                            </span>
+                            <span class="px-2 py-0.5 rounded bg-emerald-950/80 text-emerald-300 border border-emerald-800/50 text-[10px] font-mono">
+                                Optimal: <span id="inv-count-optimal" class="font-bold">0</span>
+                            </span>
+                        </div>
+                    </div>
+                    <!-- Stockout Risk Table -->
+                    <div class="overflow-x-auto max-h-48 custom-scrollbar rounded-lg border border-slate-800/80 bg-slate-950/60">
+                        <table class="w-full text-left text-[11px] text-slate-300">
+                            <thead class="bg-slate-900/90 text-[10px] text-slate-400 uppercase tracking-wider sticky top-0 border-b border-slate-800">
+                                <tr>
+                                    <th class="p-2">Warehouse</th>
+                                    <th class="p-2">Product SKU</th>
+                                    <th class="p-2">On-Hand Stock</th>
+                                    <th class="p-2">Daily Turnover</th>
+                                    <th class="p-2">Days of Supply (DOS)</th>
+                                    <th class="p-2">Risk Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="inventory-radar-tbody" class="divide-y divide-slate-800/60 font-mono">
+                                <tr>
+                                    <td colspan="6" class="p-3 text-center text-slate-500 italic">No inventory health telemetry recorded yet. Run "TRANSFORM" to compute Gold Mart.</td>
+                                </tr>
+                            </tbody>
+                        </table>
                     </div>
                 </div>
             </div>
@@ -467,6 +528,69 @@
             } catch (e) {}
         }
 
+        async function fetchInventoryHealth() {
+            try {
+                const res = await fetch('/api/metrics/inventory_health');
+                const data = await res.json();
+                if (data.summary) {
+                    const crit = data.summary.critical_stockouts || 0;
+                    const warn = data.summary.low_stock_warnings || 0;
+                    const opt = data.summary.optimal || 0;
+
+                    document.getElementById('inv-count-critical').innerText = crit;
+                    document.getElementById('inv-count-warning').innerText = warn;
+                    document.getElementById('inv-count-optimal').innerText = opt;
+                    document.getElementById('kpi-stockout-risk').innerText = crit;
+                }
+                const tbody = document.getElementById('inventory-radar-tbody');
+                if (tbody && data.top_risks && data.top_risks.length > 0) {
+                    tbody.innerHTML = data.top_risks.map(r => {
+                        let badgeClass = "bg-emerald-950/80 text-emerald-300 border-emerald-800/50";
+                        if (r.status === 'CRITICAL_STOCKOUT') badgeClass = "bg-red-950/90 text-red-300 border-red-700 font-bold animate-pulse";
+                        else if (r.status === 'LOW_STOCK_WARNING') badgeClass = "bg-yellow-950/80 text-yellow-300 border-yellow-700";
+                        return `
+                            <tr class="hover:bg-slate-900/50 transition">
+                                <td class="p-2 font-bold text-slate-200">${r.warehouse_id}</td>
+                                <td class="p-2 text-cyan-300">${r.product_id}</td>
+                                <td class="p-2 text-slate-100">${numFormat.format(r.current_on_hand)}</td>
+                                <td class="p-2 text-slate-400">${(r.daily_turnover_rate * 100).toFixed(1)}%</td>
+                                <td class="p-2 font-bold ${r.days_of_supply < 7 ? 'text-rose-400' : 'text-slate-200'}">${r.days_of_supply.toFixed(1)} d</td>
+                                <td class="p-2">
+                                    <span class="px-2 py-0.5 rounded text-[10px] border ${badgeClass}">${r.status}</span>
+                                </td>
+                            </tr>
+                        `;
+                    }).join('');
+                }
+            } catch (e) {}
+        }
+
+        async function fetchDLQ() {
+            try {
+                const res = await fetch('/api/metrics/dlq');
+                const data = await res.json();
+                const total = data.total_quarantined || 0;
+                const badge = document.getElementById('dlq-status-badge');
+                const dot = document.getElementById('dlq-dot');
+                if (badge) {
+                    badge.innerText = `${total} Quarantined`;
+                    if (total > 0) {
+                        badge.className = "text-[11px] bg-red-950/90 text-red-300 px-2 py-0.5 rounded border border-red-700 font-bold animate-pulse";
+                        if (dot) dot.className = "status-dot error";
+                    } else {
+                        badge.className = "text-[11px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded border border-slate-700 font-mono";
+                        if (dot) dot.className = "status-dot healthy";
+                    }
+                }
+                if (document.getElementById('dlq-sales-count')) {
+                    document.getElementById('dlq-sales-count').innerText = data.sales_dlq_count || 0;
+                }
+                if (document.getElementById('dlq-inv-count')) {
+                    document.getElementById('dlq-inv-count').innerText = data.inventory_dlq_count || 0;
+                }
+            } catch (e) {}
+        }
+
         async function toggleProcess(pid) {
             const currentStatus = state[pid];
             const action = currentStatus === 'running' ? 'stop' : 'start';
@@ -584,7 +708,9 @@
                 fetchStatus(),
                 fetchKafka(),
                 fetchLive(),
-                fetchShowdown()
+                fetchShowdown(),
+                fetchInventoryHealth(),
+                fetchDLQ()
             ]);
             document.getElementById('last-updated').innerText = 'Last updated: ' + new Date().toLocaleTimeString();
         }
