@@ -11,11 +11,12 @@ Usage:
     spark = get_spark_session(env="cluster") # Docker Spark cluster
 """
 
+import logging
 import os
 import platform
-import logging
-from pyspark.sql import SparkSession
+
 from pyspark import SparkConf
+from pyspark.sql import SparkSession
 
 logger = logging.getLogger(__name__)
 
@@ -94,6 +95,11 @@ def get_spark_session(
     conf.set("spark.sql.catalog.nessie.s3.secret-access-key", aws_secret_key)
     conf.set("spark.sql.catalog.nessie.s3.path-style-access", "true")
     conf.set("spark.sql.catalog.nessie.io-impl", "org.apache.iceberg.aws.s3.S3FileIO")
+
+    # ── Parquet Compression & Iceberg Table Defaults (ZSTD Level 7) ───────────
+    conf.set("spark.sql.parquet.compression.codec", "zstd")
+    conf.set("spark.sql.catalog.nessie.table-default.write.parquet.compression-codec", "zstd")
+    conf.set("spark.sql.catalog.nessie.table-default.write.parquet.compression-level", "7")
 
     # S3A FileSystem for standard Spark S3 access
     conf.set("spark.hadoop.fs.s3a.endpoint", s3_endpoint)

@@ -29,7 +29,7 @@ FROM iceberg.inventory.raw_events
 GROUP BY warehouse_id, event_type
 ORDER BY warehouse_id, event_type;
 
--- 4. Query Gold-Tier Analytical Aggregated Mart
+-- 4. Query Gold-Tier Analytical Aggregated Mart (Sales Summary)
 SELECT 
     event_date,
     product_id,
@@ -40,6 +40,34 @@ SELECT
 FROM iceberg.marts.fact_sales_summary
 ORDER BY event_date DESC, total_revenue DESC
 LIMIT 20;
+
+-- 4b. Query Gold-Tier Supply Chain Optimization Mart (Inventory Health & Stockout Alerts)
+SELECT 
+    snapshot_date,
+    warehouse_id,
+    product_id,
+    current_on_hand,
+    total_receipts,
+    total_picks,
+    daily_turnover_rate,
+    days_of_supply,
+    stockout_risk_status
+FROM iceberg.marts.fact_inventory_health
+WHERE stockout_risk_status IN ('CRITICAL_STOCKOUT', 'LOW_STOCK_WARNING')
+ORDER BY days_of_supply ASC
+LIMIT 20;
+
+-- 4c. Inspect Streaming Dead-Letter Queue (DLQ / Quarantine Audits)
+SELECT 
+    quarantined_at,
+    topic,
+    partition,
+    offset,
+    error_reason,
+    raw_payload
+FROM iceberg.sales.dlq_events
+ORDER BY quarantined_at DESC
+LIMIT 10;
 
 -- ============================================================================
 -- Advanced Lakehouse Operations: Metadata & Time-Travel

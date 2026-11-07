@@ -11,13 +11,14 @@ Pipeline Workflow:
 5. Publish pipeline metrics & health status.
 """
 
+import json
+import urllib.request
 from datetime import datetime, timedelta
+
 from airflow import DAG
 from airflow.operators.bash import BashOperator
 from airflow.operators.empty import EmptyOperator
 from airflow.operators.python import PythonOperator
-import urllib.request
-import json
 
 default_args = {
     "owner": "lakehouse-data-platform",
@@ -40,7 +41,7 @@ def check_lakehouse_health():
             data = json.loads(resp.read().decode())
             print(f"[HEALTH] Nessie catalog healthy: default branch = {data.get('defaultBranch')}")
     except Exception as e:
-        raise RuntimeError(f"Lakehouse Nessie catalog check failed: {e}")
+        raise RuntimeError(f"Lakehouse Nessie catalog check failed: {e}") from e
 
 
 with DAG(
@@ -53,7 +54,6 @@ with DAG(
     max_active_runs=1,
     tags=["lakehouse", "iceberg", "pyspark", "trino", "nessie"],
 ) as dag:
-
     start = EmptyOperator(task_id="pipeline_start")
 
     # Stage 1: Health check
@@ -87,14 +87,20 @@ with DAG(
         task_id="trino_data_quality_audit",
         bash_command="""
             docker exec trino trino --execute "
-                SELECT 
-                    COUNT(*) as total_records,
-                    SUM(total_revenue) as total_rev
-                FROM iceberg.marts.fact_sales_summary;
+                SELECT 'fact_sales_summary' as mart, COUNT(*) as total_records FROM iceberg.marts.fact_sales_summary
+                UNION ALL
+                SELECT 'fact_inventory_health' as mart, COUNT(*) as total_records FROM iceberg.marts.fact_inventory_health;
             "
         """,
     )
 
     end = EmptyOperator(task_id="pipeline_complete")
 
-    start >> verify_lakehouse_catalog >> pyspark_batch_transformation >> iceberg_table_maintenance >> trino_data_quality_audit >> end
+    (
+        start
+        >> verify_lakehouse_catalog
+        >> pyspark_batch_transformation
+        >> iceberg_table_maintenance
+        >> trino_data_quality_audit
+        >> end
+    )
